@@ -1,0 +1,30 @@
+server:
+  port: 6789
+
+spring:
+  application:
+    name: dhive
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dhive-main
+    username: postgres
+    password: 271263
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+logging:
+  level:
+    org.springframework.security: INFO
+    com.dji.sample: DEBUG
