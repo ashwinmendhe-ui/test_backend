@@ -1,0 +1,26 @@
+# Maven
+target/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Build files
+*.jar
+*.war
+*.class
+
+# Test reports
+surefire-reports/
+
+# Env files (optional later)
+.env
