@@ -28,3 +28,9 @@ logging:
   level:
     org.springframework.security: INFO
     com.dji.sample: DEBUG
+
+
+app:
+  jwt:
+    secret: "my-super-secret-key-my-super-secret-key-123456"
+    access-token-expiration-ms: 3600000
