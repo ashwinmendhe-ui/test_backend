@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import com.dji.sample.dto.response.UserDetailResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -28,8 +29,13 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    public UserResponse getUserById(@PathVariable UUID id) {
-        return userService.getUserById(id);
+    public UserDetailResponse getUserById(@PathVariable UUID id) {
+        UserResponse user = userService.getUserById(id);
+
+        return UserDetailResponse.builder()
+                .roles(user.getRoleIds())
+                .user(user)
+                .build();
     }
 
     @PostMapping

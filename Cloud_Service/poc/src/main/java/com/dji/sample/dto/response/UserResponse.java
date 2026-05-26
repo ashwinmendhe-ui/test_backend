@@ -33,13 +33,22 @@ public class UserResponse {
 
     private List<String> roleNames;
 
+    // FE-compatible single role
+    private Long role;
+
     private UUID companyId;
 
     private String companyName;
+
+    // FE-compatible alias
+    private String company;
 
     private Boolean isActive;
 
     private OffsetDateTime createdAt;
 
     private OffsetDateTime updatedAt;
+    private List<UUID> companyIds;
+    private List<Long> roles;
+    private List<String> companies;
 }
