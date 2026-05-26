@@ -19,6 +19,7 @@ mvn --version
 ## 3. install db , postgresql
 brew install postgresql@14
 brew services start postgresql@14
+postgres --version
 
 ## 4. install redis
 brew install redis
@@ -48,6 +49,8 @@ CREATE DATABASE
 postgres=# \q
 mckinleyrice@Mckinleys-MacBook-Air ~ % 
 # credential of postgres
+## for connectiong 
+psql -U postgres -d dhive-main
 DB: dhive-main
 User: postgres
 Password: Ashwin@11
@@ -66,3 +69,102 @@ app fully started as DhiveApplication
 Your backend is now running at:
 
 http://localhost:6789
+
+## 10. APIs that are directly accessible without token
+
+These are allowed in SecurityConfig:
+
+GET  /api/health
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+
+Meaning:
+
+health check works without login
+register works without token
+login works without token
+APIs that need token
+
+## 11. Everything else currently needs authentication.
+
+So for now, this one definitely needs JWT token:
+
+GET /api/v1/test/me
+
+
+## 12 when need to start app , goto
+cd Cloud_Service/poc
+mvn clean install -DskipTests
+mvn spring-boot:run -Dspring-boot.run.profiles=local
+
+
+## 13 after successful run , check health api
+curl http://localhost:6789/api/health
+
+## 14 register api
+curl -i -X POST http://localhost:6789/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "one",
+    "email": "one@example.com",
+    "password": "Test@1one",
+    "fullName": "One Test"
+  }'
+
+## 15. login api
+curl -i -X POST http://localhost:6789/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "one@example.com",
+    "password": "Test@1one"
+  }'
+
+## 16. if i want to run for difference env so need to create this files 
+application-local.yml
+application-dev.yml
+application-stage.yml
+application-prod.yml
+# and in base file i.e. application.yml need to change config accordingly
+# or For running different env we can use below command by changing env dev/stage/prod
+ mvn clean install -DskipTests
+ # above commnad not for always.
+ mvn spring-boot:run -Dspring-boot.run.profiles=dev
+
+
+ ## register
+ curl -i -X POST http://localhost:6789/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "three",
+    "email": "three@example.com",
+    "password": "Three@3three",
+    "fullName": "three three"
+  }'
+
+## login
+curl -X POST http://localhost:6789/api/v1/auth/login \
+-H "Content-Type: application/json" \
+-d '{
+  "email":"three@example.com",
+  "password":"Three@3three"
+}'
+
+
+## test for user search
+# login
+# access with bearer token
+
+curl -X GET "http://localhost:6789/api/v1/users/search" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aHJlZSIsInVzZXJJZCI6ImIyYmM3NDJkLTY5MDktNDQwZC05OTFjLTE5NWFhOGI2N2RlNiIsImVtYWlsIjoidGhyZWVAZXhhbXBsZS5jb20iLCJyb2xlcyI6WyJDT01QQU5ZX1VTRVIiXSwidG9rZW5fdHlwZSI6IkFDQ0VTUyIsImlhdCI6MTc3OTQ1NjcxMSwiZXhwIjoxNzc5NDYwMzExfQ.KOdmSCznQJwImexX8TIeAv4tfeIERU8XXrYyikkbzfo"
+
+
+# search with two word
+curl -X GET "http://localhost:6789/api/v1/users/search?keyword=two" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aHJlZSIsInVzZXJJZCI6ImIyYmM3NDJkLTY5MDktNDQwZC05OTFjLTE5NWFhOGI2N2RlNiIsImVtYWlsIjoidGhyZWVAZXhhbXBsZS5jb20iLCJyb2xlcyI6WyJDT01QQU5ZX1VTRVIiXSwidG9rZW5fdHlwZSI6IkFDQ0VTUyIsImlhdCI6MTc3OTQ1NjcxMSwiZXhwIjoxNzc5NDYwMzExfQ.KOdmSCznQJwImexX8TIeAv4tfeIERU8XXrYyikkbzfo"
+
+
+# swagger setup
+http://localhost:6789/swagger-ui/index.html
+
+# OpenAPI Doc
+http://localhost:6789/v3/api-docs

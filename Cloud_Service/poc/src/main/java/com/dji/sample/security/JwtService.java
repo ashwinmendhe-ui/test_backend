@@ -2,6 +2,7 @@ package com.dji.sample.security;
 
 import com.dji.sample.config.JwtProperties;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -31,18 +33,54 @@ public class JwtService {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateAccessToken(CustomUserDetails userDetails) {
+    public String generateAccessToken(UUID userId, String username, String email, List<String> roles) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + jwtProperties.accessTokenExpirationMs());
 
         return Jwts.builder()
-                .subject(userDetails.getUsername())
-                .claim("userId", userDetails.getUserId().toString())
-                .claim("email", userDetails.getEmail())
+                .subject(username)
+                .claim("userId", userId.toString())
+                .claim("email", email)
+                .claim("roles", roles)
+                .claim("token_type", "ACCESS")
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    public String generateRefreshToken(UUID userId, String username, String email) {
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + jwtProperties.refreshTokenExpirationMs());
+
+        return Jwts.builder()
+                .subject(userId.toString())
+                .claim("username", username)
+                .claim("email", email)
+                .claim("token_type", "REFRESH")
+                .issuedAt(now)
+                .expiration(expiry)
+                .signWith(secretKey)
+                .compact();
+    }
+
+    public Claims parseToken(String token) {
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    public boolean isTokenExpiredSpecifically(String token) {
+        try {
+            parseToken(token);
+            return false;
+        } catch (ExpiredJwtException e) {
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public String extractUsername(String token) {
@@ -56,7 +94,18 @@ public class JwtService {
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
         String username = extractUsername(token);
-        return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+        String tokenType = extractAllClaims(token).get("token_type", String.class);
+        return username.equals(userDetails.getUsername())
+                && "ACCESS".equals(tokenType)
+                && !isTokenExpired(token);
+    }
+
+    public Long getAccessTokenExpirationMs() {
+        return jwtProperties.accessTokenExpirationMs();
+    }
+
+    public Long getRefreshTokenExpirationMs() {
+        return jwtProperties.refreshTokenExpirationMs();
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> resolver) {
@@ -69,10 +118,6 @@ public class JwtService {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(secretKey)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+        return parseToken(token);
     }
 }

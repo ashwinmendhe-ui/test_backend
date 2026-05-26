@@ -36,8 +36,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        jwt = authHeader.substring(7);
 
+        jwt = authHeader.substring(7);
+        if (jwtService.isTokenExpiredSpecifically(jwt)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"code\":\"TOKEN_EXPIRED\",\"message\":\"Access token expired, please call POST /api/v1/auth/refresh-token\"}");
+            return;
+}
         try {
             username = jwtService.extractUsername(jwt);
         } catch (Exception ex) {
