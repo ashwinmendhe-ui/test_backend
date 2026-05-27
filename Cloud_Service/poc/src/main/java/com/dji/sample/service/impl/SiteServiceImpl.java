@@ -5,7 +5,9 @@ import com.dji.sample.dto.request.UpdateSiteRequest;
 import com.dji.sample.dto.response.SiteResponse;
 import com.dji.sample.entity.Company;
 import com.dji.sample.entity.Site;
+import com.dji.sample.entity.Mission;
 import com.dji.sample.repository.CompanyRepository;
+import com.dji.sample.repository.MissionRepository;
 import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.service.SiteService;
 import lombok.RequiredArgsConstructor;
@@ -16,12 +18,15 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+
+
 @Service
 @RequiredArgsConstructor
 public class SiteServiceImpl implements SiteService {
 
     private final SiteRepository siteRepository;
     private final CompanyRepository companyRepository;
+    private final MissionRepository missionRepository;
 
     @Override
     public List<SiteResponse> searchSites(UUID companyId) {
@@ -105,12 +110,27 @@ public class SiteServiceImpl implements SiteService {
     @Override
     @Transactional
     public void deleteSite(UUID id) {
+
         Site site = siteRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Site not found"));
 
+        // soft delete site
         site.setIsActive(false);
         siteRepository.save(site);
+
+        // cleanup missions linked to this site
+        List<Mission> missions =
+                missionRepository.findBySiteIdAndIsActiveTrue(id);
+
+        for (Mission mission : missions) {
+            mission.setSiteId(null);
+            mission.setSiteName(null);
+
+            missionRepository.save(mission);
+        }
     }
+        
+
 
     private String formatKst(OffsetDateTime dateTime) {
         if (dateTime == null) {

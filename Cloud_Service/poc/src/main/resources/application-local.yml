@@ -36,6 +36,8 @@ app:
     # access-token-expiration-ms: 3600000
     access-token-expiration-ms: 86400000
     refresh-token-expiration-ms: 259200000
+  upload:
+    mission-dir: uploads/missions
 
 cors:
   allowed-origin-patterns: "http://localhost:5173,http://127.0.0.1:5173"
@@ -43,3 +45,8 @@ cors:
   allowed-headers: "*"
   allow-credentials: true
   max-age: 3600
+
+aws:
+  region: ap-northeast-2
+  s3:
+    mission-bucket: robopilot-mission

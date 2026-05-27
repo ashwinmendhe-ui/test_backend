@@ -13,6 +13,8 @@ import com.dji.sample.service.CompanyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.dji.sample.entity.Mission;
+import com.dji.sample.repository.MissionRepository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -25,6 +27,7 @@ public class CompanyServiceImpl implements CompanyService {
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
     private final SiteRepository siteRepository;
+    private final MissionRepository missionRepository;
 
     @Override
     public List<CompanyResponse> searchCompanies(String keyword) {
@@ -105,31 +108,42 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional
     public void deleteCompany(UUID id) {
-        Company company = companyRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Company not found"));
 
-        List<User> assignedUsers = userRepository.findByCompanyId(id);
+    Company company = companyRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Company not found"));
 
-        for (User user : assignedUsers) {
-            user.setCompanyId(null);
-            user.setCompanyName(null);
-        }
-
-        userRepository.saveAll(assignedUsers);
-
-        List<Site> assignedSites = siteRepository.findByCompanyId(id);
-
-        for (Site site : assignedSites) {
-            site.setCompanyId(null);
-            site.setCompanyName(null);
-        }
-
-        siteRepository.saveAll(assignedSites);
-
-        companyRepository.delete(company);
+    // cleanup users linked to company
+    List<User> users = userRepository.findByCompanyId(id);
+    for (User user : users) {
+        user.setCompanyId(null);
+        user.setCompanyName(null);
+        userRepository.save(user);
     }
 
-    private String formatKst(OffsetDateTime dateTime) {
+    // cleanup sites linked to company
+    List<Site> sites = siteRepository.findByCompanyIdAndIsActiveTrueOrderByCreatedAtDesc(id);
+    for (Site site : sites) {
+        site.setCompanyId(null);
+        site.setCompanyName(null);
+        siteRepository.save(site);
+    }
+
+    // cleanup missions linked to company
+    List<Mission> missions = missionRepository.findByCompanyIdAndIsActiveTrue(id);
+    for (Mission mission : missions) {
+        mission.setCompanyId(null);
+        mission.setCompanyName(null);
+        mission.setSiteId(null);
+        mission.setSiteName(null);
+        missionRepository.save(mission);
+    }
+
+    companyRepository.delete(company);
+}
+    
+
+
+private String formatKst(OffsetDateTime dateTime) {
         if (dateTime == null) {
             return null;
         }

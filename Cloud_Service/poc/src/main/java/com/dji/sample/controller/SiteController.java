@@ -29,6 +29,13 @@ public class SiteController {
         return siteService.getSiteById(id);
     }
 
+    @GetMapping
+    public List<SiteResponse> listSites(
+            @RequestParam(required = false) UUID companyId
+    ) {
+        return siteService.searchSites(companyId);
+    }
+
     @PostMapping
     public SiteResponse createSite(@RequestBody CreateSiteRequest request) {
         return siteService.createSite(request);
