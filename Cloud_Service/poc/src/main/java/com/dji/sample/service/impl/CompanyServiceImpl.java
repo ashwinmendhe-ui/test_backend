@@ -4,14 +4,17 @@ import com.dji.sample.dto.request.CreateCompanyRequest;
 import com.dji.sample.dto.request.UpdateCompanyRequest;
 import com.dji.sample.dto.response.CompanyResponse;
 import com.dji.sample.entity.Company;
+import com.dji.sample.entity.Site;
 import com.dji.sample.entity.User;
 import com.dji.sample.repository.CompanyRepository;
+import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.repository.UserRepository;
 import com.dji.sample.service.CompanyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,6 +24,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
+    private final SiteRepository siteRepository;
 
     @Override
     public List<CompanyResponse> searchCompanies(String keyword) {
@@ -113,7 +117,26 @@ public class CompanyServiceImpl implements CompanyService {
 
         userRepository.saveAll(assignedUsers);
 
+        List<Site> assignedSites = siteRepository.findByCompanyId(id);
+
+        for (Site site : assignedSites) {
+            site.setCompanyId(null);
+            site.setCompanyName(null);
+        }
+
+        siteRepository.saveAll(assignedSites);
+
         companyRepository.delete(company);
+    }
+
+    private String formatKst(OffsetDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+
+        return dateTime
+                .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul"))
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 
     private CompanyResponse mapToResponse(Company company) {
@@ -126,8 +149,8 @@ public class CompanyServiceImpl implements CompanyService {
                 .address(company.getAddress())
                 .description(company.getDescription())
                 .isActive(company.getIsActive())
-                .createdAt(company.getCreatedAt())
-                .updatedAt(company.getUpdatedAt())
+                .createdAt(formatKst(company.getCreatedAt()))
+                .updatedAt(formatKst(company.getUpdatedAt()))
                 .build();
     }
 }

@@ -45,9 +45,8 @@ public class UserResponse {
 
     private Boolean isActive;
 
-    private OffsetDateTime createdAt;
-
-    private OffsetDateTime updatedAt;
+    private String createdAt;
+    private String updatedAt;
     private List<UUID> companyIds;
     private List<Long> roles;
     private List<String> companies;

@@ -17,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -189,6 +190,16 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    private String formatKst(OffsetDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+
+        return dateTime
+                .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul"))
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
     private UserResponse mapToResponse(User user) {
         List<UserRole> userRoles = userRoleRepository.findByUserId(user.getUserId());
         List<Long> roleIds = new ArrayList<>();
@@ -242,8 +253,8 @@ public class UserServiceImpl implements UserService {
                                 : List.of()
                 )
                 .isActive(user.getIsActive())
-                .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
+                .createdAt(formatKst(user.getCreatedAt()))
+                .updatedAt(formatKst(user.getUpdatedAt()))
                 .build();
     }
 }

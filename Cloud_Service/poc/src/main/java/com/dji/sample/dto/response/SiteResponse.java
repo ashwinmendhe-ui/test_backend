@@ -1,18 +1,26 @@
 package com.dji.sample.dto.response;
 
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-@Getter
+@Data
 @Builder
-public class CompanyResponse {
+public class SiteResponse {
+
+    private UUID siteId;
 
     private UUID companyId;
 
     private String companyName;
+
+    private String name;
+
+    private String siteName;
+
+    private String address;
 
     private String description;
 
@@ -20,11 +28,7 @@ public class CompanyResponse {
 
     private String createdAt;
     private String updatedAt;
-    private String name;
-
     private String phoneNumber;
 
     private String email;
-
-    private String address;
 }
