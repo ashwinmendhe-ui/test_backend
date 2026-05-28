@@ -168,3 +168,8 @@ http://localhost:6789/swagger-ui/index.html
 
 # OpenAPI Doc
 http://localhost:6789/v3/api-docs
+
+## configure aws locally 
+brew install awscli
+
+aws --version

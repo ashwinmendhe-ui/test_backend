@@ -9,6 +9,8 @@ import com.dji.sample.repository.CompanyRepository;
 import com.dji.sample.repository.MissionRepository;
 import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.service.MissionService;
+import com.dji.sample.service.S3PresignService;
+
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.service.S3PresignService;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +29,7 @@ public class MissionServiceImpl implements MissionService {
     private final MissionRepository missionRepository;
     private final CompanyRepository companyRepository;
     private final SiteRepository siteRepository;
+    private final S3PresignService s3PresignService;
 
     @Override
     @Transactional(readOnly = true)
@@ -98,6 +102,41 @@ public class MissionServiceImpl implements MissionService {
         enrichCompanyAndSite(mission, request);
 
         Mission saved = missionRepository.save(mission);
+
+        // generate S3 URLs if file exists
+        if (request.getFile() != null && !request.getFile().isBlank()) {
+
+            String objectKey =
+                    "missions/" +
+                    saved.getMissionId() +
+                    "/" +
+                    request.getFile();
+
+            saved.setFileKey(objectKey);
+
+            String uploadUrl =
+                    s3PresignService.createUploadUrl(objectKey);
+
+            String downloadUrl =
+                    s3PresignService.createDownloadUrl(
+                            objectKey,
+                            request.getFile()
+                    );
+
+            saved.setDownloadUrl(downloadUrl);
+
+            missionRepository.save(saved);
+
+            MissionResponse response = toResponse(saved);
+
+            response.setId(saved.getMissionId().toString());
+            response.setCode(0);
+            response.setUploadUrl(uploadUrl);
+            response.setObjectKey(objectKey);
+
+            return response;
+        }
+
         return toResponse(saved);
     }
 
@@ -119,6 +158,41 @@ public class MissionServiceImpl implements MissionService {
         enrichCompanyAndSite(mission, request);
 
         Mission saved = missionRepository.save(mission);
+
+        // generate S3 URLs if file exists
+        if (request.getFile() != null && !request.getFile().isBlank()) {
+
+            String objectKey =
+                    "missions/" +
+                    saved.getMissionId() +
+                    "/" +
+                    request.getFile();
+
+            saved.setFileKey(objectKey);
+
+            String uploadUrl =
+                    s3PresignService.createUploadUrl(objectKey);
+
+            String downloadUrl =
+                    s3PresignService.createDownloadUrl(
+                            objectKey,
+                            request.getFile()
+                    );
+
+            saved.setDownloadUrl(downloadUrl);
+
+            missionRepository.save(saved);
+
+            MissionResponse response = toResponse(saved);
+
+            response.setId(saved.getMissionId().toString());
+            response.setCode(0);
+            response.setUploadUrl(uploadUrl);
+            response.setObjectKey(objectKey);
+
+            return response;
+        }
+
         return toResponse(saved);
     }
 
@@ -172,9 +246,19 @@ public class MissionServiceImpl implements MissionService {
                 .deviceType(mission.getDeviceType())
                 .file(mission.getFile())
                 .fileName(mission.getFile())
-                .downloadUrl(mission.getDownloadUrl())
+                .downloadUrl(
+                        mission.getFileKey() != null
+                                ? s3PresignService.createDownloadUrl(
+                                        mission.getFileKey(),
+                                        mission.getFile()
+                                )
+                                : null
+                            )
                 .description(mission.getDescription())
                 .createdAt(mission.getCreatedAt())
+                .id(mission.getMissionId().toString())
+                .code(0)
+                .objectKey(mission.getFileKey())
                 .build();
     }
 
