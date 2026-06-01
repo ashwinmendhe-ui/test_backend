@@ -59,4 +59,23 @@ public class S3PresignService {
                 .url()
                 .toString();
     }
+
+    @Value("${aws.s3.stream-bucket}")
+        private String streamBucket;
+
+        public String createStreamDownloadUrl(String objectKey) {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(streamBucket)
+                .key(objectKey)
+                .build();
+
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofHours(1))
+                .getObjectRequest(getObjectRequest)
+                .build();
+
+        return presigner.presignGetObject(presignRequest)
+                .url()
+                .toString();
+        }
 }

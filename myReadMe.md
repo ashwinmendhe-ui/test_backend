@@ -173,3 +173,12 @@ http://localhost:6789/v3/api-docs
 brew install awscli
 
 aws --version
+
+## for now we can connect temproriely by export keys in same teminal where server running
+also check 
+echo $AWS_ACCESS_KEY_ID
+
+aws sts get-caller-identity
+
+## we can also do
+mvn clean compile

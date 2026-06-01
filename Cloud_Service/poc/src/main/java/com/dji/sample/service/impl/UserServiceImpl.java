@@ -3,15 +3,21 @@ package com.dji.sample.service.impl;
 import com.dji.sample.dto.request.CreateUserRequest;
 import com.dji.sample.dto.request.UpdateUserRequest;
 import com.dji.sample.dto.response.UserResponse;
+import com.dji.sample.dto.response.UserSiteResponse;
+import com.dji.sample.entity.Site;
 import com.dji.sample.entity.Company;
 import com.dji.sample.entity.Role;
 import com.dji.sample.entity.User;
 import com.dji.sample.entity.UserRole;
 import com.dji.sample.repository.CompanyRepository;
+import com.dji.sample.repository.DeviceRepository;
+import com.dji.sample.repository.MissionRepository;
 import com.dji.sample.repository.RoleRepository;
+import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.repository.UserRepository;
 import com.dji.sample.repository.UserRoleRepository;
 import com.dji.sample.service.UserService;
+import java.util.HashSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,6 +37,9 @@ public class UserServiceImpl implements UserService {
     private final RoleRepository roleRepository;
     private final CompanyRepository companyRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SiteRepository siteRepository;
+    private final MissionRepository missionRepository;
+    private final DeviceRepository deviceRepository;
 
     @Override
     public List<UserResponse> searchUsers(String keyword) {
@@ -64,6 +73,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public UserResponse createUser(CreateUserRequest request) {
         User user = new User();
 
@@ -92,7 +102,12 @@ public class UserServiceImpl implements UserService {
         User savedUser = userRepository.save(user);
 
         saveUserRoles(savedUser, resolveRoleIds(request.getRoleIds(), request.getRole()));
-
+        updateUserAssignments(
+                savedUser,
+                request.getSiteIds(),
+                request.getMissionIds(),
+                request.getDeviceIds()
+        );
         return mapToResponse(savedUser);
     }
 
@@ -132,6 +147,15 @@ public class UserServiceImpl implements UserService {
         userRoleRepository.flush();
 
         saveUserRoles(updatedUser, resolveRoleIds(request.getRoleIds(), request.getRole()));
+        updateUserAssignments(
+                updatedUser,
+                request.getSiteIds(),
+                request.getMissionIds(),
+                request.getDeviceIds()
+        );
+
+        userRepository.save(updatedUser);
+                
         return mapToResponse(updatedUser);
     }
 
@@ -206,14 +230,60 @@ public class UserServiceImpl implements UserService {
         List<String> roleNames = new ArrayList<>();
 
         for (UserRole userRole : userRoles) {
-            Role role = roleRepository.findById(userRole.getRoleId())
-                    .orElse(null);
+                Integer roleIdValue = userRole.getRoleId();
 
-            if (role != null) {
-                roleIds.add(role.getId().longValue());
-                roleNames.add(role.getRoleKey());
+                if (roleIdValue == null) {
+                    continue;
+                }
+
+                int roleId = roleIdValue;
+
+                Role role = roleRepository.findById(roleId)
+                        .orElse(null);
+
+                if (role != null) {
+                    roleIds.add(role.getId().longValue());
+                    roleNames.add(role.getRoleKey());
+                }
             }
-        }
+
+        List<UUID> siteIds = user.getSites().stream()
+                .map(Site::getSiteId)
+                .toList();
+
+        List<UUID> missionIds = user.getMissions().stream()
+                .map(mission -> mission.getMissionId())
+                .toList();
+
+        List<UUID> deviceIds = user.getDevices().stream()
+                .map(device -> device.getDeviceId())
+                .toList();
+
+        List<UserSiteResponse> sites = user.getSites().stream()
+                .map(site -> UserSiteResponse.builder()
+                        .siteId(site.getSiteId())
+                        .siteName(site.getName())
+                        .createdAt(formatKst(site.getCreatedAt()))
+                        .missionList(
+                                user.getMissions().stream()
+                                        .filter(mission -> mission.getSiteId() != null
+                                            && mission.getSiteId().equals(site.getSiteId()))
+                                        .map(mission -> mission.getMissionId())
+                                        .toList()
+                        )
+                        .deviceList(
+                                user.getDevices().stream()
+                                        .filter(device -> device.getSite() != null
+                                                && device.getSite().getSiteId().equals(site.getSiteId()))
+                                        .map(device -> device.getDeviceId())
+                                        .toList()
+                        )
+                        .build())
+                .toList();
+
+        
+
+
 
         return UserResponse.builder()
                 .userId(user.getUserId())
@@ -255,6 +325,30 @@ public class UserServiceImpl implements UserService {
                 .isActive(user.getIsActive())
                 .createdAt(formatKst(user.getCreatedAt()))
                 .updatedAt(formatKst(user.getUpdatedAt()))
+                .siteIds(siteIds)
+                .missionIds(missionIds)
+                .deviceIds(deviceIds)
+                .sites(sites)
                 .build();
     }
+
+    private void updateUserAssignments(User user, List<UUID> siteIds, List<UUID> missionIds, List<UUID> deviceIds) {
+        user.getSites().clear();
+        user.getMissions().clear();
+        user.getDevices().clear();
+
+        if (siteIds != null && !siteIds.isEmpty()) {
+            user.getSites().addAll(siteRepository.findAllById(siteIds));
+        }
+
+        if (missionIds != null && !missionIds.isEmpty()) {
+            user.getMissions().addAll(missionRepository.findAllById(missionIds));
+        }
+
+        if (deviceIds != null && !deviceIds.isEmpty()) {
+            user.getDevices().addAll(deviceRepository.findAllById(deviceIds));
+        }
+    }
+
+
 }

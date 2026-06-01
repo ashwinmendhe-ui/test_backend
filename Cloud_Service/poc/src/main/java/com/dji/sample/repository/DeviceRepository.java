@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
@@ -13,4 +14,5 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
     List<Device> findByCompany_CompanyId(UUID companyId);
 
     boolean existsByDeviceSn(String deviceSn);
+    Optional<Device> findByDeviceSn(String deviceSn);
 }

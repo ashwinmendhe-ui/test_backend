@@ -26,4 +26,9 @@ public class CreateUserRequest {
     private UUID companyId;
     private String companyName;
     private Long role;
+    private List<UUID> siteIds;
+
+    private List<UUID> deviceIds;
+
+    private List<UUID> missionIds;
 }

@@ -12,6 +12,9 @@ import java.util.UUID;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import java.util.HashSet;
+import java.util.Set;
+
 @Entity
 @Table(name = "users")
 @Getter
@@ -60,4 +63,31 @@ public class User {
 
     @Column(name = "company_name")
     private String companyName;
+
+    @ManyToMany
+    @JoinTable(
+            name = "user_sites",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "site_id")
+    )
+    @Builder.Default
+    private Set<Site> sites = new HashSet<>();
+
+    @ManyToMany
+    @JoinTable(
+            name = "user_missions",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "mission_id")
+    )
+    @Builder.Default
+    private Set<Mission> missions = new HashSet<>();
+
+    @ManyToMany
+    @JoinTable(
+            name = "user_devices",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "device_id")
+    )
+    @Builder.Default
+    private Set<Device> devices = new HashSet<>();
 }

@@ -50,4 +50,12 @@ public class UserResponse {
     private List<UUID> companyIds;
     private List<Long> roles;
     private List<String> companies;
+
+    private List<UUID> siteIds;
+
+    private List<UUID> deviceIds;
+
+    private List<UUID> missionIds;
+
+    private List<UserSiteResponse> sites;
 }

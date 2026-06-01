@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
-import com.dji.sample.service.S3PresignService;
 
 @Service
 @RequiredArgsConstructor
@@ -233,6 +232,26 @@ public class MissionServiceImpl implements MissionService {
         }
     }
 
+    private String resolveDownloadUrl(Mission mission) {
+        if (mission.getFileKey() == null || mission.getFileKey().isBlank()) {
+                return mission.getDownloadUrl();
+        }
+
+        if (mission.getFile() == null || mission.getFile().isBlank()) {
+                return mission.getDownloadUrl();
+        }
+
+        try {
+                return s3PresignService.createDownloadUrl(
+                        mission.getFileKey(),
+                        mission.getFile()
+                );
+        } catch (Exception e) {
+                return mission.getDownloadUrl();
+        }
+        }
+    
+    
     private MissionResponse toResponse(Mission mission) {
         return MissionResponse.builder()
                 .missionId(mission.getMissionId())
@@ -246,14 +265,7 @@ public class MissionServiceImpl implements MissionService {
                 .deviceType(mission.getDeviceType())
                 .file(mission.getFile())
                 .fileName(mission.getFile())
-                .downloadUrl(
-                        mission.getFileKey() != null
-                                ? s3PresignService.createDownloadUrl(
-                                        mission.getFileKey(),
-                                        mission.getFile()
-                                )
-                                : null
-                            )
+                .downloadUrl(resolveDownloadUrl(mission))
                 .description(mission.getDescription())
                 .createdAt(mission.getCreatedAt())
                 .id(mission.getMissionId().toString())

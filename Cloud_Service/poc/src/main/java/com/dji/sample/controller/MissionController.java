@@ -1,6 +1,7 @@
 package com.dji.sample.controller;
 
 import com.dji.sample.dto.request.MissionRequest;
+import com.dji.sample.dto.response.ApiResponse;
 import com.dji.sample.dto.response.MissionResponse;
 import com.dji.sample.service.MissionService;
 import lombok.RequiredArgsConstructor;
@@ -37,22 +38,35 @@ public class MissionController {
     public MissionResponse getById(@PathVariable UUID id) {
         return missionService.getById(id);
     }
-
-    @PostMapping
-    public MissionResponse create(@RequestBody MissionRequest request) {
-        return missionService.create(request);
-    }
+        @PostMapping
+        public ApiResponse<MissionResponse> create(@RequestBody MissionRequest request) {
+            return ApiResponse.<MissionResponse>builder()
+                    .success(true)
+                    .message("Mission created successfully")
+                    .data(missionService.create(request))
+                    .build();
+        }
 
     @PostMapping("/update/{id}")
-    public MissionResponse update(
+    public ApiResponse<MissionResponse> update(
             @PathVariable UUID id,
             @RequestBody MissionRequest request
     ) {
-        return missionService.update(id, request);
+        return ApiResponse.<MissionResponse>builder()
+                .success(true)
+                .message("Mission updated successfully")
+                .data(missionService.update(id, request))
+                .build();
     }
 
     @PostMapping("/delete/{id}")
-    public void delete(@PathVariable UUID id) {
+    public ApiResponse<Void> delete(@PathVariable UUID id) {
         missionService.delete(id);
+
+        return ApiResponse.<Void>builder()
+                .success(true)
+                .message("Mission deleted successfully")
+                .data(null)
+                .build();
     }
 }

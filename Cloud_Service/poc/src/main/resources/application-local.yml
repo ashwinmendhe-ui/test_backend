@@ -50,3 +50,4 @@ aws:
   region: ap-northeast-2
   s3:
     mission-bucket: robopilot-mission
+    stream-bucket: robopilot-stream-data
