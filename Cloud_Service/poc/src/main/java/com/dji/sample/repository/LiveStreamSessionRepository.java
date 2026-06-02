@@ -24,4 +24,8 @@ public interface LiveStreamSessionRepository extends JpaRepository<LiveStreamSes
     );
 
     boolean existsByMissionIdAndSessionStatus(UUID missionId, String sessionStatus);
+    Optional<LiveStreamSession> findFirstByDeviceSnAndMissionIdOrderByStartedAtDesc(
+                String deviceSn,
+                UUID missionId
+        );
 }

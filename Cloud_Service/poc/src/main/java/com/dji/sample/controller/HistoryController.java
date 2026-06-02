@@ -1,5 +1,6 @@
 package com.dji.sample.controller;
 
+import com.dji.sample.dto.request.CreateHistoryRequest;
 import com.dji.sample.dto.response.HistoryDetailResponse;
 import com.dji.sample.dto.response.HistoryListResponse;
 import com.dji.sample.service.HistoryService;
@@ -24,5 +25,10 @@ public class HistoryController {
     @GetMapping("/{id}")
     public HistoryDetailResponse getDetail(@PathVariable UUID id) {
         return historyService.getDetail(id);
+    }
+
+    @PostMapping
+    public HistoryDetailResponse createHistory(@RequestBody CreateHistoryRequest request) {
+        return historyService.createHistory(request);
     }
 }

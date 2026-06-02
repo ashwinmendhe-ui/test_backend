@@ -153,9 +153,9 @@ public class DeviceServiceImpl implements DeviceService {
                 .deviceSn(device.getDeviceSn())
                 .description(device.getDescription())
                 .status(device.getStatus())
-                .createdAt(DateTimeUtil.toKstString(device.getCreatedAt()))
-                .updatedAt(DateTimeUtil.toKstString(device.getUpdatedAt()))
-                .createdDate(DateTimeUtil.toKstString(device.getCreatedAt()))
+                .createdAt(DateTimeUtil.formatKst(device.getCreatedAt()))
+                .updatedAt(DateTimeUtil.formatKst(device.getUpdatedAt()))
+                .createdDate(DateTimeUtil.formatKst(device.getCreatedAt()))
                 .build();
     }
 }

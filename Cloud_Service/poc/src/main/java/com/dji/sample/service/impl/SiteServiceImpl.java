@@ -10,6 +10,8 @@ import com.dji.sample.repository.CompanyRepository;
 import com.dji.sample.repository.MissionRepository;
 import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.service.SiteService;
+import com.dji.sample.util.DateTimeUtil;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -133,14 +135,8 @@ public class SiteServiceImpl implements SiteService {
 
 
     private String formatKst(OffsetDateTime dateTime) {
-        if (dateTime == null) {
-            return null;
+            return DateTimeUtil.formatKst(dateTime);
         }
-
-        return dateTime
-                .atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul"))
-                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-    }
 
     private SiteResponse toResponse(Site site) {
         return SiteResponse.builder()

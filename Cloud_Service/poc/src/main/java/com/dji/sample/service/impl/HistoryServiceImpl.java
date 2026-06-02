@@ -11,6 +11,12 @@ import org.springframework.stereotype.Service;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import com.dji.sample.util.DateTimeUtil;
+import com.dji.sample.dto.request.CreateHistoryRequest;
+import com.dji.sample.util.DateTimeUtil;
+import java.time.Duration;
+
+
 
 @Service
 @RequiredArgsConstructor
@@ -22,10 +28,8 @@ public class HistoryServiceImpl implements HistoryService {
     private final MissionRepository missionRepository;
     private final DeviceRepository deviceRepository;
     private final UserRepository userRepository;
-
-    private static final DateTimeFormatter FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
+    private final LiveStreamSessionRepository liveStreamSessionRepository;
+    
     @Override
     public List<HistoryListResponse> getList() {
         return reportHistoryRepository.findAll()
@@ -133,8 +137,80 @@ public class HistoryServiceImpl implements HistoryService {
         return user.getEmail() != null ? user.getEmail() : "";
     }
 
+
+    private String calculateTotalTime(OffsetDateTime startTime, OffsetDateTime endTime) {
+        if (startTime == null || endTime == null) {
+            return "00:00:00";
+        }
+
+        Duration duration = Duration.between(startTime, endTime);
+
+        long seconds = Math.max(duration.getSeconds(), 0);
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long secs = seconds % 60;
+
+        return String.format("%02d:%02d:%02d", hours, minutes, secs);
+    }
+
+    @Override
+    public HistoryDetailResponse createHistory(CreateHistoryRequest request) {
+
+        if (request.getDeviceSn() == null || request.getDeviceSn().isBlank()) {
+            throw new RuntimeException("deviceSn is required");
+        }
+
+        if (request.getPlaybackUrl() == null || request.getPlaybackUrl().isBlank()) {
+            throw new RuntimeException("playbackUrl is required");
+        }
+
+        Device device = findDevice(request.getDeviceSn());
+
+        LiveStreamSession session = null;
+        if (request.getMissionId() != null) {
+            session = liveStreamSessionRepository
+                    .findFirstByDeviceSnAndMissionIdOrderByStartedAtDesc(
+                            request.getDeviceSn(),
+                            request.getMissionId()
+                    )
+                    .orElse(null);
+        }
+
+        UUID companyId = null;
+        UUID siteId = null;
+
+        if (device != null) {
+            companyId = device.getCompany() != null ? device.getCompany().getCompanyId() : null;
+            siteId = device.getSite() != null ? device.getSite().getSiteId() : null;
+        }
+
+        OffsetDateTime startTime = session != null ? session.getStartedAt() : OffsetDateTime.now();
+        OffsetDateTime endTime = session != null && session.getStoppedAt() != null
+                ? session.getStoppedAt()
+                : OffsetDateTime.now();
+
+        ReportHistory history = ReportHistory.builder()
+                .historyId(UUID.randomUUID())
+                .deviceSn(request.getDeviceSn())
+                .playbackUrl(request.getPlaybackUrl())
+                .companyId(companyId)
+                .siteId(siteId)
+                .missionId(request.getMissionId())
+                .userId(session != null ? session.getUserId() : null)
+                .startTime(startTime)
+                .endTime(endTime)
+                .totalTime(calculateTotalTime(startTime, endTime))
+                .totalRecognition(0)
+                .createdAt(OffsetDateTime.now())
+                .videoStatus("AVAILABLE")
+                .build();
+
+        ReportHistory saved = reportHistoryRepository.save(history);
+
+        return getDetail(saved.getHistoryId());
+    }
     private String format(OffsetDateTime value) {
-        if (value == null) return "";
-        return value.format(FORMATTER);
+        String formatted = DateTimeUtil.formatKst(value);
+        return formatted != null ? formatted : "";
     }
 }
