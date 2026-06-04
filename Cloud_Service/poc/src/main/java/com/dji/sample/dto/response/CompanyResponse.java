@@ -17,6 +17,7 @@ public class CompanyResponse {
     private String description;
 
     private Boolean isActive;
+    private String status;
 
     private String createdAt;
     private String updatedAt;

@@ -18,15 +18,14 @@ import java.util.UUID;
 public class Site {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "site_id", nullable = false, updatable = false)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Column(name = "site_id", nullable = false, unique = true, updatable = false)
     private UUID siteId;
 
     @Column(name = "company_id")
     private UUID companyId;
-
-    @Column(name = "company_name")
-    private String companyName;
 
     @Column(name = "name", nullable = false)
     private String name;
@@ -37,9 +36,14 @@ public class Site {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @Builder.Default
-    @Column(name = "is_active", nullable = false)
-    private Boolean isActive = true;
+    @Column(name = "timezone")
+    private String timezone;
+
+    @Column(name = "phone_number")
+    private String phoneNumber;
+
+    @Column(name = "email")
+    private String email;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -49,9 +53,17 @@ public class Site {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
-    @Column(name = "phone_number")
-    private String phoneNumber;
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
 
-    @Column(name = "email")
-    private String email;
+    @PrePersist
+    public void prePersist() {
+        if (siteId == null) {
+            siteId = UUID.randomUUID();
+        }
+
+        if (timezone == null) {
+            timezone = "Asia/Seoul";
+        }
+    }
 }

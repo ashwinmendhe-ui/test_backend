@@ -58,4 +58,6 @@ public class UserResponse {
     private List<UUID> missionIds;
 
     private List<UserSiteResponse> sites;
+
+    private List<String> roleKeys;
 }

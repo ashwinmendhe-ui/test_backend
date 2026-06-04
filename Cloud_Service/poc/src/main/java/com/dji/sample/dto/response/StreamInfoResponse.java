@@ -43,4 +43,5 @@ public class StreamInfoResponse {
     private String streamUrl;
     private String liveUrl;
     private String cameraUrl;
+    private String state;
 }

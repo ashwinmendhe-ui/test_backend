@@ -4,9 +4,9 @@ import com.dji.sample.dto.request.CreateUserRequest;
 import com.dji.sample.dto.request.UpdateUserRequest;
 import com.dji.sample.dto.response.UserResponse;
 import com.dji.sample.dto.response.UserSiteResponse;
-import com.dji.sample.entity.Site;
 import com.dji.sample.entity.Company;
 import com.dji.sample.entity.Role;
+import com.dji.sample.entity.Site;
 import com.dji.sample.entity.User;
 import com.dji.sample.entity.UserRole;
 import com.dji.sample.repository.CompanyRepository;
@@ -17,7 +17,6 @@ import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.repository.UserRepository;
 import com.dji.sample.repository.UserRoleRepository;
 import com.dji.sample.service.UserService;
-import java.util.HashSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -46,27 +45,22 @@ public class UserServiceImpl implements UserService {
         List<User> users;
 
         if (keyword == null || keyword.isBlank()) {
-            users = userRepository.findAll();
+            users = userRepository.findByDeletedAtIsNull();
         } else {
-            users = userRepository
-                    .findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCase(
-                            keyword,
-                            keyword
-                    );
+            users = userRepository.findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCaseAndDeletedAtIsNull(
+                    keyword,
+                    keyword
+            );
         }
 
-        List<UserResponse> responses = new ArrayList<>();
-
-        for (User user : users) {
-            responses.add(mapToResponse(user));
-        }
-
-        return responses;
+        return users.stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
     @Override
     public UserResponse getUserById(UUID userId) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         return mapToResponse(user);
@@ -76,6 +70,25 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse createUser(CreateUserRequest request) {
         User user = new User();
+
+        String username = request.getUsername() != null ? request.getUsername().trim() : "";
+        String email = request.getEmail() != null ? request.getEmail().trim() : "";
+
+        if (username.isBlank()) {
+            throw new RuntimeException("Username is required");
+        }
+
+        if (email.isBlank()) {
+            throw new RuntimeException("Email is required");
+        }
+
+        if (userRepository.existsByUsernameAndDeletedAtIsNull(request.getUsername())) {
+            throw new RuntimeException("Username already exists");
+        }
+
+        if (userRepository.existsByEmailAndDeletedAtIsNull(request.getEmail())) {
+            throw new RuntimeException("Email already exists");
+        }
 
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
@@ -91,39 +104,60 @@ public class UserServiceImpl implements UserService {
 
         applyCompanyToUser(user, request.getCompanyId(), request.getCompanyName());
 
-        user.setIsActive(
-                request.getIsActive() != null ? request.getIsActive() : true
-        );
+        user.setIsActive(request.getIsActive() != null ? request.getIsActive() : true);
 
-        user.setPasswordHash(
-                passwordEncoder.encode(request.getPassword())
-        );
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
 
         User savedUser = userRepository.save(user);
 
         saveUserRoles(savedUser, resolveRoleIds(request.getRoleIds(), request.getRole()));
+
         updateUserAssignments(
                 savedUser,
                 request.getSiteIds(),
                 request.getMissionIds(),
                 request.getDeviceIds()
         );
+
         return mapToResponse(savedUser);
     }
 
     @Override
     @Transactional
     public UserResponse updateUser(UUID userId, UpdateUserRequest request) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        user.setUsername(request.getUsername());
-        user.setEmail(request.getEmail());
+        String username = request.getUsername() != null ? request.getUsername().trim() : "";
+        String email = request.getEmail() != null ? request.getEmail().trim() : "";
+
+        if (username.isBlank()) {
+            throw new RuntimeException("Username is required");
+        }
+
+        if (email.isBlank()) {
+            throw new RuntimeException("Email is required");
+        }
+
+        userRepository.findByUsernameAndDeletedAtIsNull(username)
+                .filter(existing -> !existing.getUserId().equals(userId))
+                .ifPresent(existing -> {
+                    throw new RuntimeException("Username already exists");
+                });
+
+        userRepository.findByEmailAndDeletedAtIsNull(email)
+                .filter(existing -> !existing.getUserId().equals(userId))
+                .ifPresent(existing -> {
+                    throw new RuntimeException("Email already exists");
+                });
+
+        user.setUsername(username);
+        user.setEmail(email);
 
         user.setFullName(
                 request.getFullName() != null && !request.getFullName().isBlank()
                         ? request.getFullName()
-                        : request.getUsername()
+                        : username
         );
 
         user.setPhone(request.getPhone());
@@ -136,9 +170,7 @@ public class UserServiceImpl implements UserService {
         }
 
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
-            user.setPasswordHash(
-                    passwordEncoder.encode(request.getPassword())
-            );
+            user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         }
 
         User updatedUser = userRepository.save(user);
@@ -147,6 +179,7 @@ public class UserServiceImpl implements UserService {
         userRoleRepository.flush();
 
         saveUserRoles(updatedUser, resolveRoleIds(request.getRoleIds(), request.getRole()));
+
         updateUserAssignments(
                 updatedUser,
                 request.getSiteIds(),
@@ -154,31 +187,32 @@ public class UserServiceImpl implements UserService {
                 request.getDeviceIds()
         );
 
-        userRepository.save(updatedUser);
-                
-        return mapToResponse(updatedUser);
-    }
+        User saved = userRepository.save(updatedUser);
 
+        return mapToResponse(saved);
+    }
     @Override
     @Transactional
     public void deleteUser(UUID userId) {
-
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         userRoleRepository.deleteByUserId(user.getUserId());
 
-        userRepository.delete(user);
+        user.setDeletedAt(OffsetDateTime.now());
+        user.setIsActive(false);
+
+        userRepository.save(user);
     }
 
     private void applyCompanyToUser(User user, UUID companyId, String companyName) {
         user.setCompanyId(companyId);
 
         if (companyId != null) {
-            Company company = companyRepository.findById(companyId)
+            Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId)
                     .orElseThrow(() -> new RuntimeException("Company not found"));
 
-            user.setCompanyName(company.getCompanyName());
+            user.setCompanyName(company.getName());
         } else {
             user.setCompanyName(companyName);
         }
@@ -230,49 +264,52 @@ public class UserServiceImpl implements UserService {
         List<String> roleNames = new ArrayList<>();
 
         for (UserRole userRole : userRoles) {
-                Integer roleIdValue = userRole.getRoleId();
+            Integer roleIdValue = userRole.getRoleId();
 
-                if (roleIdValue == null) {
-                    continue;
-                }
-
-                int roleId = roleIdValue;
-
-                Role role = roleRepository.findById(roleId)
-                        .orElse(null);
-
-                if (role != null) {
-                    roleIds.add(role.getId().longValue());
-                    roleNames.add(role.getRoleKey());
-                }
+            if (roleIdValue == null) {
+                continue;
             }
 
+            Role role = roleRepository.findById(roleIdValue).orElse(null);
+
+            if (role != null) {
+                roleIds.add(role.getId().longValue());
+                roleNames.add(role.getRoleKey());
+            }
+        }
+
         List<UUID> siteIds = user.getSites().stream()
+                .filter(site -> site.getDeletedAt() == null)
                 .map(Site::getSiteId)
                 .toList();
 
         List<UUID> missionIds = user.getMissions().stream()
+                .filter(mission -> mission.getDeletedAt() == null)
                 .map(mission -> mission.getMissionId())
                 .toList();
 
         List<UUID> deviceIds = user.getDevices().stream()
+                .filter(device -> device.getDeletedAt() == null)
                 .map(device -> device.getDeviceId())
                 .toList();
 
         List<UserSiteResponse> sites = user.getSites().stream()
+                .filter(site -> site.getDeletedAt() == null)
                 .map(site -> UserSiteResponse.builder()
                         .siteId(site.getSiteId())
                         .siteName(site.getName())
                         .createdAt(formatKst(site.getCreatedAt()))
                         .missionList(
                                 user.getMissions().stream()
+                                        .filter(mission -> mission.getDeletedAt() == null)
                                         .filter(mission -> mission.getSiteId() != null
-                                            && mission.getSiteId().equals(site.getSiteId()))
+                                                && mission.getSiteId().equals(site.getSiteId()))
                                         .map(mission -> mission.getMissionId())
                                         .toList()
                         )
                         .deviceList(
                                 user.getDevices().stream()
+                                        .filter(device -> device.getDeletedAt() == null)
                                         .filter(device -> device.getSite() != null
                                                 && device.getSite().getSiteId().equals(site.getSiteId()))
                                         .map(device -> device.getDeviceId())
@@ -281,48 +318,25 @@ public class UserServiceImpl implements UserService {
                         .build())
                 .toList();
 
-        
-
-
-
         return UserResponse.builder()
                 .userId(user.getUserId())
                 .id(user.getUserId())
                 .username(user.getUsername())
-                .name(
-                        user.getFullName() != null
-                                ? user.getFullName()
-                                : user.getUsername()
-                )
+                .name(user.getFullName() != null ? user.getFullName() : user.getUsername())
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .phone(user.getPhone())
                 .description(user.getDescription())
                 .roleIds(roleIds)
                 .roleNames(roleNames)
-                .role(roleIds != null && !roleIds.isEmpty() ? roleIds.get(0) : null)
+                .role(!roleIds.isEmpty() ? roleIds.get(0) : null)
                 .roles(roleIds)
-
                 .companyId(user.getCompanyId())
-                .companyName(user.getCompanyName())
-
-                .company(
-                        user.getCompanyId() != null
-                                ? user.getCompanyId().toString()
-                                : null
-                )
-
-                .companyIds(
-                        user.getCompanyId() != null
-                                ? List.of(user.getCompanyId())
-                                : List.of()
-                )
-                .companies(
-                        user.getCompanyId() != null
-                                ? List.of(user.getCompanyId().toString())
-                                : List.of()
-                )
-                .isActive(user.getIsActive())
+                .companyName(resolveCompanyName(user))
+                .company(user.getCompanyId() != null ? user.getCompanyId().toString() : null)
+                .companyIds(user.getCompanyId() != null ? List.of(user.getCompanyId()) : List.of())
+                .companies(user.getCompanyId() != null ? List.of(user.getCompanyId().toString()) : List.of())
+                .isActive(user.getDeletedAt() == null && Boolean.TRUE.equals(user.getIsActive()))
                 .createdAt(formatKst(user.getCreatedAt()))
                 .updatedAt(formatKst(user.getUpdatedAt()))
                 .siteIds(siteIds)
@@ -332,23 +346,46 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
 
+    private String resolveCompanyName(User user) {
+        if (user.getCompanyId() == null) {
+            return user.getCompanyName();
+        }
+
+        return companyRepository.findByCompanyIdAndDeletedAtIsNull(user.getCompanyId())
+                .map(Company::getName)
+                .orElse(user.getCompanyName());
+    }
+
     private void updateUserAssignments(User user, List<UUID> siteIds, List<UUID> missionIds, List<UUID> deviceIds) {
         user.getSites().clear();
         user.getMissions().clear();
         user.getDevices().clear();
 
         if (siteIds != null && !siteIds.isEmpty()) {
-            user.getSites().addAll(siteRepository.findAllById(siteIds));
+            user.getSites().addAll(
+                    siteIds.stream()
+                            .map(id -> siteRepository.findBySiteIdAndDeletedAtIsNull(id)
+                                    .orElseThrow(() -> new RuntimeException("Site not found: " + id)))
+                            .toList()
+            );
         }
 
         if (missionIds != null && !missionIds.isEmpty()) {
-            user.getMissions().addAll(missionRepository.findAllById(missionIds));
+            user.getMissions().addAll(
+                    missionIds.stream()
+                            .map(id -> missionRepository.findByMissionIdAndDeletedAtIsNull(id)
+                                    .orElseThrow(() -> new RuntimeException("Mission not found: " + id)))
+                            .toList()
+            );
         }
 
         if (deviceIds != null && !deviceIds.isEmpty()) {
-            user.getDevices().addAll(deviceRepository.findAllById(deviceIds));
+            user.getDevices().addAll(
+                    deviceIds.stream()
+                            .map(id -> deviceRepository.findByDeviceIdAndDeletedAtIsNull(id)
+                                    .orElseThrow(() -> new RuntimeException("Device not found: " + id)))
+                            .toList()
+            );
         }
     }
-
-
 }

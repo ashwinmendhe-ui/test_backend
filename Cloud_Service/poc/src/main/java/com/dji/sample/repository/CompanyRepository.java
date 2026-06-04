@@ -7,11 +7,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface CompanyRepository extends JpaRepository<Company, UUID> {
+public interface CompanyRepository extends JpaRepository<Company, Integer> {
 
-    Optional<Company> findByCompanyName(String companyName);
+    Optional<Company> findByCompanyIdAndDeletedAtIsNull(UUID companyId);
 
-    boolean existsByCompanyName(String companyName);
+    Optional<Company> findByNameAndDeletedAtIsNull(String name);
 
-    List<Company> findByCompanyNameContainingIgnoreCase(String keyword);
+    boolean existsByNameAndDeletedAtIsNull(String name);
+
+    List<Company> findByDeletedAtIsNull();
+
+    List<Company> findByNameContainingIgnoreCaseAndDeletedAtIsNull(String keyword);
 }

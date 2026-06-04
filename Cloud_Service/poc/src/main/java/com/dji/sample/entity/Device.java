@@ -2,8 +2,10 @@ package com.dji.sample.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
@@ -16,7 +18,10 @@ import java.util.UUID;
 public class Device {
 
     @Id
-    @Column(name = "device_id", nullable = false, updatable = false)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Column(name = "device_id", nullable = false, unique = true, updatable = false)
     private UUID deviceId;
 
     @Column(name = "device_name", nullable = false)
@@ -41,18 +46,38 @@ public class Device {
     private String status;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
+    @JoinColumn(name = "company_id", referencedColumnName = "company_id")
     private Company company;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "site_id")
+    @JoinColumn(name = "site_id", referencedColumnName = "site_id")
     private Site site;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    @Column(name = "mission_id")
+    private UUID missionId;
 
+    @Column(name = "domain")
+    private String domain;
+
+    @Column(name = "type")
+    private String type;
+
+    @Column(name = "sub_type")
+    private String subType;
+
+    @Column(name = "thing_version")
+    private String thingVersion;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private OffsetDateTime createdAt;
+
+    @UpdateTimestamp
     @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    private OffsetDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
 
     @PrePersist
     public void prePersist() {
@@ -63,13 +88,5 @@ public class Device {
         if (status == null || status.isBlank()) {
             status = "INACTIVE";
         }
-
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = LocalDateTime.now();
     }
 }

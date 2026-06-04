@@ -31,4 +31,6 @@ public class SiteResponse {
     private String phoneNumber;
 
     private String email;
+    private Integer deviceCount;
+    private Integer deviceOnlineCount;
 }

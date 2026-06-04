@@ -4,17 +4,20 @@ import com.dji.sample.entity.Site;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.Optional;
+import java.util.UUID;
 
-public interface SiteRepository extends JpaRepository<Site, UUID> {
+public interface SiteRepository extends JpaRepository<Site, Integer> {
 
-    List<Site> findByIsActiveTrueOrderByCreatedAtDesc();
+    List<Site> findByDeletedAtIsNullOrderByCreatedAtDesc();
 
-    List<Site> findByCompanyIdAndIsActiveTrueOrderByCreatedAtDesc(UUID companyId);
+    List<Site> findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID companyId);
+
     List<Site> findByCompanyId(UUID companyId);
-    Optional<Site> findBySiteId(UUID siteId);
-    boolean existsByNameIgnoreCaseAndCompanyIdAndIsActiveTrue(
+
+    Optional<Site> findBySiteIdAndDeletedAtIsNull(UUID siteId);
+
+    boolean existsByNameIgnoreCaseAndCompanyIdAndDeletedAtIsNull(
             String name,
             UUID companyId
     );

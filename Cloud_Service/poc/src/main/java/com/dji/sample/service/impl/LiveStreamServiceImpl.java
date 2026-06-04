@@ -21,6 +21,10 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import com.dji.sample.service.S3PresignService;
 
+import com.dji.sample.entity.ReportHistory;
+import com.dji.sample.repository.ReportHistoryRepository;
+import java.time.Duration;
+
 @Service
 @RequiredArgsConstructor
 public class LiveStreamServiceImpl implements LiveStreamService {
@@ -28,7 +32,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final DeviceRepository deviceRepository;
     private final S3PresignService s3PresignService;
-
+    private final ReportHistoryRepository reportHistoryRepository;
     @Override
     public StartStreamResponse startStream(StartStreamRequest request) {
 
@@ -54,7 +58,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
             }
         }
 
-        Device device = deviceRepository.findByDeviceSn(request.getDeviceSn())
+        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
                 .orElseThrow(() -> new RuntimeException("Device not found"));
 
         LiveStreamSession session = new LiveStreamSession();
@@ -85,7 +89,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
 
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
 
-        device.setStatus("WORKING");
+        device.setMissionId(request.getMissionId());
         deviceRepository.save(device);
 
         return StartStreamResponse.builder()
@@ -95,11 +99,18 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                 .playbackUrl(saved.getPlaybackUrl())
                 .sessionStatus(saved.getSessionStatus())
                 .status(saved.getSessionStatus())
+
+                // reference compatibility
+                .viewerCount(1)
+                .startTime(saved.getStartedAt())
+                .canStop(true)
+                .isSendHeartBeat(true)
+
                 .build();
     }
 
-    @Override
-    public StreamInfoResponse stopStream(StopStreamRequest request) {
+        @Override
+        public StreamInfoResponse stopStream(StopStreamRequest request) {
 
         LiveStreamSession session =
                 liveStreamSessionRepository
@@ -111,20 +122,24 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                                 new RuntimeException("Active stream not found")
                         );
 
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
         session.setSessionStatus("STOPPED");
-        session.setStoppedAt(OffsetDateTime.now(ZoneOffset.UTC));
+        session.setStoppedAt(now);
 
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
 
-        Device device = deviceRepository.findByDeviceSn(request.getDeviceSn())
+        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
                 .orElseThrow(() -> new RuntimeException("Device not found"));
 
-        device.setStatus("INACTIVE");
+        
+        device.setMissionId(null);
         deviceRepository.save(device);
 
-        return mapToResponse(saved);
-    }
+        createReportHistory(saved, device);
 
+        return mapToResponse(saved);
+        }
     @Override
     public StreamInfoResponse getStreamInfo(UUID streamId) {
 
@@ -138,40 +153,50 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         return mapToResponse(session);
     }
 
-    @Override
-    public StreamInfoResponse heartbeat(UUID sessionId) {
+        @Override
+        public StreamInfoResponse heartbeat(UUID sessionId) {
 
         LiveStreamSession session =
-                liveStreamSessionRepository
-                        .findById(sessionId)
-                        .orElseThrow(() ->
-                                new RuntimeException("Stream not found")
-                        );
+        liveStreamSessionRepository
+        .findByIdAndSessionStatus(sessionId, "ACTIVE")
+        .orElseThrow(() ->
+        new RuntimeException("Active stream not found")
+        );
 
         session.setLastHeartbeatAt(OffsetDateTime.now(ZoneOffset.UTC));
 
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
 
         return mapToResponse(saved);
-    }
-
+        }
+    
     @Override
-    public StreamStatusResponse getStreamStatus(String deviceSn) {
+        public StreamStatusResponse getStreamStatus(String deviceSn) {
 
-        boolean active =
+        var activeSession =
                 liveStreamSessionRepository
-                        .existsByDeviceSnAndSessionStatus(
+                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
                                 deviceSn,
                                 "ACTIVE"
                         );
 
+        boolean active = activeSession.isPresent();
+
         return StreamStatusResponse.builder()
                 .active(active)
+                .streaming(active)
                 .deviceSn(deviceSn)
                 .sessionStatus(active ? "ACTIVE" : "STOPPED")
+                .missionId(
+                        activeSession
+                                .map(LiveStreamSession::getMissionId)
+                                .orElse(null)
+                )
                 .build();
-    }
+        }
 
+    
+    
     private UUID getCurrentUserId() {
         Authentication authentication =
                 SecurityContextHolder.getContext().getAuthentication();
@@ -189,12 +214,54 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         throw new RuntimeException("Invalid authenticated user principal");
     }
 
+    private void createReportHistory(LiveStreamSession session, Device device) {
+
+        if (session.getPlaybackUrl() == null || session.getPlaybackUrl().isBlank()) {
+                return;
+        }
+
+        String totalTime = null;
+
+        if (session.getStartedAt() != null && session.getStoppedAt() != null) {
+                Duration duration = Duration.between(session.getStartedAt(), session.getStoppedAt());
+
+                long hours = duration.toHours();
+                long minutes = duration.toMinutesPart();
+                long seconds = duration.toSecondsPart();
+
+                totalTime = String.format("%02d:%02d:%02d", hours, minutes, seconds);
+        }
+
+        ReportHistory history = ReportHistory.builder()
+                .deviceSn(session.getDeviceSn())
+                .playbackUrl(session.getPlaybackUrl())
+                .companyId(device.getCompany() != null ? device.getCompany().getCompanyId() : null)
+                .siteId(device.getSite() != null ? device.getSite().getSiteId() : null) 
+                .missionId(session.getMissionId())
+                .userId(session.getUserId())
+                .startTime(session.getStartedAt())
+                .endTime(session.getStoppedAt())
+                .totalTime(totalTime)
+                .totalRecognition(0)
+                .videoStatus("AVAILABLE")
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
+                .build();
+
+        reportHistoryRepository.save(history);
+        }
+
     private StreamInfoResponse mapToResponse(LiveStreamSession session) {
         return StreamInfoResponse.builder()
                 .id(session.getId())
                 .deviceSn(session.getDeviceSn())
                 .userId(session.getUserId())
                 .sessionStatus(session.getSessionStatus())
+                .state(
+                        "ACTIVE".equals(session.getSessionStatus())
+                                ? "RUNNING"
+                                : session.getSessionStatus()
+                )
+
                 .quality(session.getQuality())
                 .startedAt(session.getStartedAt())
                 .lastHeartbeatAt(session.getLastHeartbeatAt())

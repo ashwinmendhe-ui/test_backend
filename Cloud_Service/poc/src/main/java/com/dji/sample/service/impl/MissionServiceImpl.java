@@ -10,12 +10,12 @@ import com.dji.sample.repository.MissionRepository;
 import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.service.MissionService;
 import com.dji.sample.service.S3PresignService;
-
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -35,12 +35,12 @@ public class MissionServiceImpl implements MissionService {
     public List<MissionResponse> search(String keyword, String from, String to) {
         String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
 
-        return missionRepository.findByIsActiveTrueOrderByCreatedAtDesc()
+        return missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc()
                 .stream()
                 .filter(mission -> normalizedKeyword.isEmpty()
                         || contains(mission.getMissionName(), normalizedKeyword)
-                        || contains(mission.getCompanyName(), normalizedKeyword)
-                        || contains(mission.getSiteName(), normalizedKeyword)
+                        || contains(resolveCompanyName(mission.getCompanyId()), normalizedKeyword)
+                        || contains(resolveSiteName(mission.getSiteId()), normalizedKeyword)
                         || contains(mission.getMissionType(), normalizedKeyword)
                         || contains(mission.getDeviceType(), normalizedKeyword)
                         || contains(mission.getFile(), normalizedKeyword))
@@ -54,7 +54,7 @@ public class MissionServiceImpl implements MissionService {
     public List<MissionResponse> list(String companyId, String siteId) {
         if (siteId != null && !siteId.isBlank()) {
             return missionRepository
-                    .findBySiteIdAndIsActiveTrueOrderByCreatedAtDesc(UUID.fromString(siteId))
+                    .findBySiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID.fromString(siteId))
                     .stream()
                     .map(this::toResponse)
                     .toList();
@@ -62,13 +62,13 @@ public class MissionServiceImpl implements MissionService {
 
         if (companyId != null && !companyId.isBlank()) {
             return missionRepository
-                    .findByCompanyIdAndIsActiveTrueOrderByCreatedAtDesc(UUID.fromString(companyId))
+                    .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID.fromString(companyId))
                     .stream()
                     .map(this::toResponse)
                     .toList();
         }
 
-        return missionRepository.findByIsActiveTrueOrderByCreatedAtDesc()
+        return missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc()
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -77,8 +77,7 @@ public class MissionServiceImpl implements MissionService {
     @Override
     @Transactional(readOnly = true)
     public MissionResponse getById(UUID id) {
-        Mission mission = missionRepository.findById(id)
-                .filter(m -> Boolean.TRUE.equals(m.getIsActive()))
+        Mission mission = missionRepository.findByMissionIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new EntityNotFoundException("Mission not found"));
 
         return toResponse(mission);
@@ -86,48 +85,28 @@ public class MissionServiceImpl implements MissionService {
 
     @Override
     public MissionResponse create(MissionRequest request) {
+        String deviceType = normalizeDeviceType(request.getDeviceType());
+
         Mission mission = Mission.builder()
                 .companyId(request.getCompanyId())
                 .siteId(request.getSiteId())
                 .missionName(request.getMissionName())
                 .missionType(request.getMissionType())
-                .deviceType(request.getDeviceType())
+                .deviceType(deviceType)
                 .file(request.getFile())
-                .downloadUrl(request.getDownloadUrl())
                 .description(request.getDescription())
-                .isActive(true)
                 .build();
 
-        enrichCompanyAndSite(mission, request);
+        validateCompanyAndSite(mission);
 
         Mission saved = missionRepository.save(mission);
 
-        // generate S3 URLs if file exists
         if (request.getFile() != null && !request.getFile().isBlank()) {
+            String objectKey = buildObjectKey(saved);
 
-            String objectKey =
-                    "missions/" +
-                    saved.getMissionId() +
-                    "/" +
-                    request.getFile();
-
-            saved.setFileKey(objectKey);
-
-            String uploadUrl =
-                    s3PresignService.createUploadUrl(objectKey);
-
-            String downloadUrl =
-                    s3PresignService.createDownloadUrl(
-                            objectKey,
-                            request.getFile()
-                    );
-
-            saved.setDownloadUrl(downloadUrl);
-
-            missionRepository.save(saved);
+            String uploadUrl = s3PresignService.createUploadUrl(objectKey);
 
             MissionResponse response = toResponse(saved);
-
             response.setId(saved.getMissionId().toString());
             response.setCode(0);
             response.setUploadUrl(uploadUrl);
@@ -138,52 +117,32 @@ public class MissionServiceImpl implements MissionService {
 
         return toResponse(saved);
     }
-
+    
     @Override
     public MissionResponse update(UUID id, MissionRequest request) {
-        Mission mission = missionRepository.findById(id)
-                .filter(m -> Boolean.TRUE.equals(m.getIsActive()))
+        Mission mission = missionRepository.findByMissionIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new EntityNotFoundException("Mission not found"));
+
+        String deviceType = normalizeDeviceType(request.getDeviceType());
 
         mission.setCompanyId(request.getCompanyId());
         mission.setSiteId(request.getSiteId());
         mission.setMissionName(request.getMissionName());
         mission.setMissionType(request.getMissionType());
-        mission.setDeviceType(request.getDeviceType());
+        mission.setDeviceType(deviceType);
         mission.setFile(request.getFile());
-        mission.setDownloadUrl(request.getDownloadUrl());
         mission.setDescription(request.getDescription());
 
-        enrichCompanyAndSite(mission, request);
+        validateCompanyAndSite(mission);
 
         Mission saved = missionRepository.save(mission);
 
-        // generate S3 URLs if file exists
         if (request.getFile() != null && !request.getFile().isBlank()) {
+            String objectKey = buildObjectKey(saved);
 
-            String objectKey =
-                    "missions/" +
-                    saved.getMissionId() +
-                    "/" +
-                    request.getFile();
-
-            saved.setFileKey(objectKey);
-
-            String uploadUrl =
-                    s3PresignService.createUploadUrl(objectKey);
-
-            String downloadUrl =
-                    s3PresignService.createDownloadUrl(
-                            objectKey,
-                            request.getFile()
-                    );
-
-            saved.setDownloadUrl(downloadUrl);
-
-            missionRepository.save(saved);
+            String uploadUrl = s3PresignService.createUploadUrl(objectKey);
 
             MissionResponse response = toResponse(saved);
-
             response.setId(saved.getMissionId().toString());
             response.setCode(0);
             response.setUploadUrl(uploadUrl);
@@ -194,71 +153,102 @@ public class MissionServiceImpl implements MissionService {
 
         return toResponse(saved);
     }
-
     @Override
     public void delete(UUID id) {
-        Mission mission = missionRepository.findById(id)
-                .filter(m -> Boolean.TRUE.equals(m.getIsActive()))
+        Mission mission = missionRepository.findByMissionIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new EntityNotFoundException("Mission not found"));
 
-        mission.setIsActive(false);
+        mission.setDeletedAt(OffsetDateTime.now());
         missionRepository.save(mission);
     }
 
-    private void enrichCompanyAndSite(Mission mission, MissionRequest request) {
-        if (request.getCompanyId() != null) {
-            companyRepository.findById(request.getCompanyId())
-                    .map(Company::getCompanyName)
-                    .ifPresent(mission::setCompanyName);
-        } else {
-            mission.setCompanyName(null);
+    private void validateCompanyAndSite(Mission mission) {
+        if (mission.getCompanyId() != null) {
+            companyRepository.findByCompanyIdAndDeletedAtIsNull(mission.getCompanyId())
+                    .orElseThrow(() -> new EntityNotFoundException("Company not found"));
         }
 
-        if (request.getSiteId() != null) {
-            siteRepository.findById(request.getSiteId())
-                    .ifPresent(site -> {
-                        mission.setSiteName(site.getName());
+        if (mission.getSiteId() != null) {
+            Site site = siteRepository.findBySiteIdAndDeletedAtIsNull(mission.getSiteId())
+                    .orElseThrow(() -> new EntityNotFoundException("Site not found"));
 
-                        if (mission.getCompanyId() == null && site.getCompanyId() != null) {
-                            mission.setCompanyId(site.getCompanyId());
-                        }
-
-                        if (mission.getCompanyName() == null || mission.getCompanyName().isBlank()) {
-                            mission.setCompanyName(site.getCompanyName());
-                        }
-                    });
-        } else {
-            mission.setSiteName(null);
+            if (mission.getCompanyId() == null && site.getCompanyId() != null) {
+                mission.setCompanyId(site.getCompanyId());
+            }
         }
     }
 
-    private String resolveDownloadUrl(Mission mission) {
-        if (mission.getFileKey() == null || mission.getFileKey().isBlank()) {
-                return mission.getDownloadUrl();
+    private String resolveCompanyName(UUID companyId) {
+        if (companyId == null) {
+            return null;
         }
 
-        if (mission.getFile() == null || mission.getFile().isBlank()) {
-                return mission.getDownloadUrl();
+        return companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId)
+                .map(Company::getName)
+                .orElse(null);
+    }
+
+    private String resolveSiteName(UUID siteId) {
+        if (siteId == null) {
+            return null;
+        }
+
+        return siteRepository.findBySiteIdAndDeletedAtIsNull(siteId)
+                .map(Site::getName)
+                .orElse(null);
+    }
+
+    private String buildObjectKey(Mission mission) {
+        if (mission.getMissionId() == null || mission.getFile() == null || mission.getFile().isBlank()) {
+            return null;
+        }
+
+        return "missions/" + mission.getMissionId() + "/" + mission.getFile();
+    }
+
+    private String resolveDownloadUrl(Mission mission) {
+        String objectKey = buildObjectKey(mission);
+
+        if (objectKey == null) {
+            return null;
         }
 
         try {
-                return s3PresignService.createDownloadUrl(
-                        mission.getFileKey(),
-                        mission.getFile()
-                );
+            return s3PresignService.createDownloadUrl(
+                    objectKey,
+                    mission.getFile()
+            );
         } catch (Exception e) {
-                return mission.getDownloadUrl();
+            return null;
         }
+    }
+    private String normalizeDeviceType(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
         }
-    
-    
+
+        String trimmed = value.trim();
+
+        if ("DRONE".equalsIgnoreCase(trimmed)) {
+            return "Drone";
+        }
+
+        if ("ROBOT".equalsIgnoreCase(trimmed)
+                || "Quadruped Robot".equalsIgnoreCase(trimmed)) {
+            return "Robot";
+        }
+
+        return trimmed;
+    }
     private MissionResponse toResponse(Mission mission) {
+        String objectKey = buildObjectKey(mission);
+
         return MissionResponse.builder()
                 .missionId(mission.getMissionId())
                 .companyId(mission.getCompanyId())
-                .companyName(mission.getCompanyName())
+                .companyName(resolveCompanyName(mission.getCompanyId()))
                 .siteId(mission.getSiteId())
-                .siteName(mission.getSiteName())
+                .siteName(resolveSiteName(mission.getSiteId()))
                 .missionName(mission.getMissionName())
                 .name(mission.getMissionName())
                 .missionType(mission.getMissionType())
@@ -270,7 +260,7 @@ public class MissionServiceImpl implements MissionService {
                 .createdAt(mission.getCreatedAt())
                 .id(mission.getMissionId().toString())
                 .code(0)
-                .objectKey(mission.getFileKey())
+                .objectKey(objectKey)
                 .build();
     }
 

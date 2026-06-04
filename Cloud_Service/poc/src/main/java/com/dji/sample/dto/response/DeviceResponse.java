@@ -38,4 +38,7 @@ public class DeviceResponse {
     private String createdAt;
     private String updatedAt;
     private String createdDate;
+    private UUID missionId;
+    private String missionName;
+    
 }

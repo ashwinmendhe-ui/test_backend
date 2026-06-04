@@ -4,15 +4,22 @@ import com.dji.sample.entity.Device;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.Optional;
+import java.util.UUID;
 
-public interface DeviceRepository extends JpaRepository<Device, UUID> {
+public interface DeviceRepository extends JpaRepository<Device, Integer> {
 
-    List<Device> findBySite_SiteId(UUID siteId);
+    Optional<Device> findByDeviceIdAndDeletedAtIsNull(UUID deviceId);
 
-    List<Device> findByCompany_CompanyId(UUID companyId);
+    Optional<Device> findByDeviceSnAndDeletedAtIsNull(String deviceSn);
 
+    boolean existsByDeviceSnAndDeletedAtIsNull(String deviceSn);
+
+    List<Device> findByDeletedAtIsNullOrderByCreatedAtDesc();
+
+    List<Device> findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID siteId);
+
+    List<Device> findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID companyId);
     boolean existsByDeviceSn(String deviceSn);
-    Optional<Device> findByDeviceSn(String deviceSn);
+
 }

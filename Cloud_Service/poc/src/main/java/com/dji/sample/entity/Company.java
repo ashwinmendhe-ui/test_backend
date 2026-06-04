@@ -18,27 +18,17 @@ import java.util.UUID;
 public class Company {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "company_id", nullable = false, updatable = false)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Column(name = "company_id", nullable = false, unique = true)
     private UUID companyId;
 
-    @Column(name = "company_name", nullable = false, unique = true)
-    private String companyName;
+    @Column(name = "name", nullable = false)
+    private String name;
 
-    @Column(name = "description")
+    @Column(name = "description", columnDefinition = "TEXT")
     private String description;
-
-    @Column(name = "is_active", nullable = false)
-    @Builder.Default
-    private Boolean isActive = true;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
 
     @Column(name = "phone_number")
     private String phoneNumber;
@@ -48,4 +38,29 @@ public class Company {
 
     @Column(name = "address")
     private String address;
+
+    @Column(name = "status")
+    private String status;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (companyId == null) {
+            companyId = UUID.randomUUID();
+        }
+
+        if (status == null) {
+            status = "ACTIVE";
+        }
+    }
 }

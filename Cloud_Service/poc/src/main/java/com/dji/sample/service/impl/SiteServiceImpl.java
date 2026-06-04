@@ -4,14 +4,14 @@ import com.dji.sample.dto.request.CreateSiteRequest;
 import com.dji.sample.dto.request.UpdateSiteRequest;
 import com.dji.sample.dto.response.SiteResponse;
 import com.dji.sample.entity.Company;
-import com.dji.sample.entity.Site;
 import com.dji.sample.entity.Mission;
+import com.dji.sample.entity.Site;
 import com.dji.sample.repository.CompanyRepository;
+import com.dji.sample.repository.DeviceRepository;
 import com.dji.sample.repository.MissionRepository;
 import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.service.SiteService;
 import com.dji.sample.util.DateTimeUtil;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,8 +20,6 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-
-
 @Service
 @RequiredArgsConstructor
 public class SiteServiceImpl implements SiteService {
@@ -29,15 +27,16 @@ public class SiteServiceImpl implements SiteService {
     private final SiteRepository siteRepository;
     private final CompanyRepository companyRepository;
     private final MissionRepository missionRepository;
+    private final DeviceRepository deviceRepository;
 
     @Override
     public List<SiteResponse> searchSites(UUID companyId) {
         List<Site> sites;
 
         if (companyId != null) {
-            sites = siteRepository.findByCompanyIdAndIsActiveTrueOrderByCreatedAtDesc(companyId);
+            sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
         } else {
-            sites = siteRepository.findByIsActiveTrueOrderByCreatedAtDesc();
+            sites = siteRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
         }
 
         return sites.stream()
@@ -47,7 +46,7 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     public SiteResponse getSiteById(UUID id) {
-        Site site = siteRepository.findById(id)
+        Site site = siteRepository.findBySiteIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Site not found"));
 
         return toResponse(site);
@@ -56,102 +55,118 @@ public class SiteServiceImpl implements SiteService {
     @Override
     @Transactional
     public SiteResponse createSite(CreateSiteRequest request) {
-        String companyName = null;
+
         UUID companyId = request.getCompanyId();
 
         if (companyId != null) {
-            Company company = companyRepository.findById(companyId)
+            companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId)
                     .orElseThrow(() -> new RuntimeException("Company not found"));
-            companyName = company.getCompanyName();
         }
 
         Site site = Site.builder()
                 .companyId(companyId)
-                .companyName(companyName)
                 .name(request.getName())
                 .address(request.getAddress())
                 .description(request.getDescription())
-                .isActive(request.getIsActive() != null ? request.getIsActive() : true)
                 .phoneNumber(request.getPhoneNumber())
                 .email(request.getEmail())
+                .timezone("Asia/Seoul")
                 .build();
 
         Site saved = siteRepository.save(site);
         return toResponse(saved);
     }
+
     @Override
     @Transactional
     public SiteResponse updateSite(UUID id, UpdateSiteRequest request) {
-    Site site = siteRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Site not found"));
 
-    String companyName = null;
-    UUID companyId = request.getCompanyId();
+        Site site = siteRepository.findBySiteIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new RuntimeException("Site not found"));
 
-    if (companyId != null) {
-        Company company = companyRepository.findById(companyId)
-                .orElseThrow(() -> new RuntimeException("Company not found"));
-        companyName = company.getCompanyName();
+        UUID companyId = request.getCompanyId();
+
+        if (companyId != null) {
+            companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId)
+                    .orElseThrow(() -> new RuntimeException("Company not found"));
+        }
+
+        site.setCompanyId(companyId);
+        site.setName(request.getName());
+        site.setAddress(request.getAddress());
+        site.setDescription(request.getDescription());
+        site.setPhoneNumber(request.getPhoneNumber());
+        site.setEmail(request.getEmail());
+
+        Site saved = siteRepository.save(site);
+        return toResponse(saved);
     }
 
-    site.setCompanyId(companyId);
-    site.setCompanyName(companyName);
-    site.setName(request.getName());
-    site.setAddress(request.getAddress());
-    site.setDescription(request.getDescription());
-    site.setPhoneNumber(request.getPhoneNumber());
-    site.setEmail(request.getEmail());
-
-    if (request.getIsActive() != null) {
-        site.setIsActive(request.getIsActive());
-    }
-
-    Site saved = siteRepository.save(site);
-    return toResponse(saved);
-}
     @Override
     @Transactional
     public void deleteSite(UUID id) {
 
-        Site site = siteRepository.findById(id)
+        Site site = siteRepository.findBySiteIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Site not found"));
 
-        // soft delete site
-        site.setIsActive(false);
+        site.setDeletedAt(OffsetDateTime.now());
         siteRepository.save(site);
 
-        // cleanup missions linked to this site
         List<Mission> missions =
-                missionRepository.findBySiteIdAndIsActiveTrue(id);
+                missionRepository.findBySiteIdAndDeletedAtIsNull(id);
 
         for (Mission mission : missions) {
             mission.setSiteId(null);
-            mission.setSiteName(null);
-
             missionRepository.save(mission);
         }
     }
-        
-
 
     private String formatKst(OffsetDateTime dateTime) {
-            return DateTimeUtil.formatKst(dateTime);
+        return DateTimeUtil.formatKst(dateTime);
+    }
+
+    private String resolveCompanyName(UUID companyId) {
+
+        if (companyId == null) {
+            return null;
         }
 
+        return companyRepository
+                .findByCompanyIdAndDeletedAtIsNull(companyId)
+                .map(Company::getName)
+                .orElse(null);
+    }
+
     private SiteResponse toResponse(Site site) {
+
+        boolean active = site.getDeletedAt() == null;
+
+        var devices = deviceRepository
+                .findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(site.getSiteId());
+
+        int registeredDrone = devices.size();
+
+        int onlineDrone = (int) devices.stream()
+                .filter(device -> "WORKING".equalsIgnoreCase(device.getStatus())
+                        || "ONLINE".equalsIgnoreCase(device.getStatus()))
+                .count();
+
         return SiteResponse.builder()
                 .siteId(site.getSiteId())
                 .companyId(site.getCompanyId())
-                .companyName(site.getCompanyName())
+                .companyName(resolveCompanyName(site.getCompanyId()))
                 .name(site.getName())
                 .siteName(site.getName())
                 .address(site.getAddress())
                 .description(site.getDescription())
-                .isActive(site.getIsActive())
+                .isActive(active)
                 .createdAt(formatKst(site.getCreatedAt()))
                 .updatedAt(formatKst(site.getUpdatedAt()))
                 .phoneNumber(site.getPhoneNumber())
                 .email(site.getEmail())
+                .deviceCount(registeredDrone)
+                .deviceOnlineCount(onlineDrone)
+                
                 .build();
     }
 }

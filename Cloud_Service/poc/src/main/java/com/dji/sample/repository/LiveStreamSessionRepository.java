@@ -8,12 +8,9 @@ import java.util.UUID;
 
 public interface LiveStreamSessionRepository extends JpaRepository<LiveStreamSession, UUID> {
 
-    Optional<LiveStreamSession> findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-            String deviceSn,
-            String sessionStatus
-    );
+    Optional<LiveStreamSession> findByIdAndSessionStatus(UUID id, String sessionStatus);
 
-    Optional<LiveStreamSession> findFirstByDeviceSnAndSessionStatusNotOrderByStartedAtDesc(
+    Optional<LiveStreamSession> findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
             String deviceSn,
             String sessionStatus
     );
@@ -24,8 +21,9 @@ public interface LiveStreamSessionRepository extends JpaRepository<LiveStreamSes
     );
 
     boolean existsByMissionIdAndSessionStatus(UUID missionId, String sessionStatus);
+
     Optional<LiveStreamSession> findFirstByDeviceSnAndMissionIdOrderByStartedAtDesc(
-                String deviceSn,
-                UUID missionId
-        );
+            String deviceSn,
+            UUID missionId
+    );
 }

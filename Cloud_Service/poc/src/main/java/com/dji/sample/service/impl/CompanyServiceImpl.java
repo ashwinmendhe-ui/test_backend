@@ -4,17 +4,19 @@ import com.dji.sample.dto.request.CreateCompanyRequest;
 import com.dji.sample.dto.request.UpdateCompanyRequest;
 import com.dji.sample.dto.response.CompanyResponse;
 import com.dji.sample.entity.Company;
+import com.dji.sample.entity.Mission;
 import com.dji.sample.entity.Site;
 import com.dji.sample.entity.User;
 import com.dji.sample.repository.CompanyRepository;
+import com.dji.sample.repository.MissionRepository;
 import com.dji.sample.repository.SiteRepository;
 import com.dji.sample.repository.UserRepository;
+import com.dji.sample.entity.Device;
+import com.dji.sample.repository.DeviceRepository;
 import com.dji.sample.service.CompanyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dji.sample.entity.Mission;
-import com.dji.sample.repository.MissionRepository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -28,16 +30,13 @@ public class CompanyServiceImpl implements CompanyService {
     private final UserRepository userRepository;
     private final SiteRepository siteRepository;
     private final MissionRepository missionRepository;
+    private final DeviceRepository deviceRepository;
 
     @Override
     public List<CompanyResponse> searchCompanies(String keyword) {
-        List<Company> companies;
-
-        if (keyword == null || keyword.isBlank()) {
-            companies = companyRepository.findAll();
-        } else {
-            companies = companyRepository.findByCompanyNameContainingIgnoreCase(keyword);
-        }
+        List<Company> companies = (keyword == null || keyword.isBlank())
+                ? companyRepository.findByDeletedAtIsNull()
+                : companyRepository.findByNameContainingIgnoreCaseAndDeletedAtIsNull(keyword.trim());
 
         return companies.stream()
                 .map(this::mapToResponse)
@@ -46,7 +45,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     public CompanyResponse getCompanyById(UUID id) {
-        Company company = companyRepository.findById(id)
+        Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Company not found"));
 
         return mapToResponse(company);
@@ -64,17 +63,17 @@ public class CompanyServiceImpl implements CompanyService {
 
         companyName = companyName.trim();
 
-        if (companyRepository.existsByCompanyName(companyName)) {
+        if (companyRepository.existsByNameAndDeletedAtIsNull(companyName)) {
             throw new RuntimeException("Company name already exists");
         }
 
         Company company = Company.builder()
-                .companyName(companyName)
+                .name(companyName)
                 .phoneNumber(request.getPhoneNumber())
                 .email(request.getEmail())
                 .address(request.getAddress())
                 .description(request.getDescription())
-                .isActive(request.getIsActive() != null ? request.getIsActive() : true)
+                .status(request.getIsActive() != null && !request.getIsActive() ? "INACTIVE" : "ACTIVE")
                 .build();
 
         return mapToResponse(companyRepository.save(company));
@@ -82,7 +81,7 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     public CompanyResponse updateCompany(UUID id, UpdateCompanyRequest request) {
-        Company company = companyRepository.findById(id)
+        Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Company not found"));
 
         String companyName = request.getCompanyName() != null
@@ -90,7 +89,7 @@ public class CompanyServiceImpl implements CompanyService {
                 : request.getName();
 
         if (companyName != null && !companyName.isBlank()) {
-            company.setCompanyName(companyName.trim());
+            company.setName(companyName.trim());
         }
 
         company.setPhoneNumber(request.getPhoneNumber());
@@ -99,7 +98,7 @@ public class CompanyServiceImpl implements CompanyService {
         company.setDescription(request.getDescription());
 
         if (request.getIsActive() != null) {
-            company.setIsActive(request.getIsActive());
+            company.setStatus(request.getIsActive() ? "ACTIVE" : "INACTIVE");
         }
 
         return mapToResponse(companyRepository.save(company));
@@ -108,42 +107,45 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional
     public void deleteCompany(UUID id) {
+        Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new RuntimeException("Company not found"));
 
-    Company company = companyRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Company not found"));
+        List<User> users = userRepository.findByCompanyIdAndDeletedAtIsNull(id);
+        for (User user : users) {
+            user.setCompanyId(null);
+            user.setCompanyName(null);
+            userRepository.save(user);
+        }
 
-    // cleanup users linked to company
-    List<User> users = userRepository.findByCompanyId(id);
-    for (User user : users) {
-        user.setCompanyId(null);
-        user.setCompanyName(null);
-        userRepository.save(user);
+        List<Site> sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(id);
+        for (Site site : sites) {
+            site.setCompanyId(null);
+            siteRepository.save(site);
+        }
+
+        List<Mission> missions = missionRepository.findByCompanyIdAndDeletedAtIsNull(id);
+        for (Mission mission : missions) {
+            mission.setCompanyId(null);
+            mission.setSiteId(null);
+            missionRepository.save(mission);
+        }
+
+        List<Device> devices =
+        deviceRepository.findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(id);
+
+        for (Device device : devices) {
+            device.setCompany(null);
+            device.setSite(null);
+            device.setStatus("INACTIVE");
+            deviceRepository.save(device);
+        }
+
+        company.setDeletedAt(OffsetDateTime.now());
+        company.setStatus("INACTIVE");
+        companyRepository.save(company);
     }
 
-    // cleanup sites linked to company
-    List<Site> sites = siteRepository.findByCompanyIdAndIsActiveTrueOrderByCreatedAtDesc(id);
-    for (Site site : sites) {
-        site.setCompanyId(null);
-        site.setCompanyName(null);
-        siteRepository.save(site);
-    }
-
-    // cleanup missions linked to company
-    List<Mission> missions = missionRepository.findByCompanyIdAndIsActiveTrue(id);
-    for (Mission mission : missions) {
-        mission.setCompanyId(null);
-        mission.setCompanyName(null);
-        mission.setSiteId(null);
-        mission.setSiteName(null);
-        missionRepository.save(mission);
-    }
-
-    companyRepository.delete(company);
-}
-    
-
-
-private String formatKst(OffsetDateTime dateTime) {
+    private String formatKst(OffsetDateTime dateTime) {
         if (dateTime == null) {
             return null;
         }
@@ -154,15 +156,19 @@ private String formatKst(OffsetDateTime dateTime) {
     }
 
     private CompanyResponse mapToResponse(Company company) {
+        boolean active = company.getDeletedAt() == null
+                && !"INACTIVE".equalsIgnoreCase(company.getStatus());
+
         return CompanyResponse.builder()
                 .companyId(company.getCompanyId())
-                .name(company.getCompanyName())
-                .companyName(company.getCompanyName())
+                .name(company.getName())
+                .companyName(company.getName())
                 .phoneNumber(company.getPhoneNumber())
                 .email(company.getEmail())
                 .address(company.getAddress())
                 .description(company.getDescription())
-                .isActive(company.getIsActive())
+                .status(company.getStatus())
+                .isActive(active)
                 .createdAt(formatKst(company.getCreatedAt()))
                 .updatedAt(formatKst(company.getUpdatedAt()))
                 .build();

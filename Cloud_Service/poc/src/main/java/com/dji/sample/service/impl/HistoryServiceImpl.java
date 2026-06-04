@@ -9,11 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import com.dji.sample.util.DateTimeUtil;
 import com.dji.sample.dto.request.CreateHistoryRequest;
-import com.dji.sample.util.DateTimeUtil;
 import java.time.Duration;
 
 
@@ -86,7 +84,7 @@ public class HistoryServiceImpl implements HistoryService {
         return HistoryListResponse.builder()
                 .historyId(history.getHistoryId())
                 .companyId(history.getCompanyId())
-                .companyName(company != null ? company.getCompanyName() : "")
+                .companyName(company != null ? company.getName() : "")
                 .siteId(history.getSiteId())
                 .siteName(site != null ? site.getName() : "")
                 .missionId(history.getMissionId())
@@ -103,27 +101,27 @@ public class HistoryServiceImpl implements HistoryService {
 
     private Company findCompany(UUID companyId) {
         if (companyId == null) return null;
-        return companyRepository.findById(companyId).orElse(null);
+        return companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId).orElse(null);
     }
 
     private Site findSite(UUID siteId) {
         if (siteId == null) return null;
-        return siteRepository.findById(siteId).orElse(null);
+        return siteRepository.findBySiteIdAndDeletedAtIsNull(siteId).orElse(null);
     }
 
     private Mission findMission(UUID missionId) {
         if (missionId == null) return null;
-        return missionRepository.findById(missionId).orElse(null);
+        return missionRepository.findByMissionIdAndDeletedAtIsNull(missionId).orElse(null);
     }
 
     private Device findDevice(String deviceSn) {
         if (deviceSn == null || deviceSn.isBlank()) return null;
-        return deviceRepository.findByDeviceSn(deviceSn).orElse(null);
+        return deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn).orElse(null);
     }
 
     private User findUser(UUID userId) {
         if (userId == null) return null;
-        return userRepository.findById(userId).orElse(null);
+        return userRepository.findByUserIdAndDeletedAtIsNull(userId).orElse(null);
     }
 
     private String resolveUserName(User user) {

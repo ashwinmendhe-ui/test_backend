@@ -3,6 +3,7 @@ package com.dji.sample.dto.response;
 import lombok.Builder;
 import lombok.Data;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -20,4 +21,13 @@ public class StartStreamResponse {
     private String sessionStatus;
 
     private String status;
+
+    // reference FE compatibility
+    private Integer viewerCount;
+
+    private OffsetDateTime startTime;
+
+    private Boolean canStop;
+
+    private Boolean isSendHeartBeat;
 }

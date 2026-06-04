@@ -21,9 +21,9 @@ public class ReportHistory {
     @Column(name = "device_sn", nullable = false)
     private String deviceSn;
 
-    @Column(name = "playback_url", nullable = false)
+    @Column(name = "playback_url", nullable = false, columnDefinition = "TEXT")
     private String playbackUrl;
-
+    
     @Column(name = "company_id")
     private UUID companyId;
 

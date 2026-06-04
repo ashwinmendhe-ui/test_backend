@@ -13,10 +13,17 @@ public class CustomUserDetailsService implements UserDetailsService {
     private final UserRepository userRepository;
 
     @Override
-    public UserDetails loadUserByUsername(String usernameOrEmail) throws UsernameNotFoundException {
-        User user = userRepository.findByUsername(usernameOrEmail)
-                .or(() -> userRepository.findByEmail(usernameOrEmail))
+    public UserDetails loadUserByUsername(String usernameOrEmail)
+            throws UsernameNotFoundException {
+
+        User user = userRepository
+                .findByUsernameAndDeletedAtIsNull(usernameOrEmail)
+                .or(() -> userRepository.findByEmailAndDeletedAtIsNull(usernameOrEmail))
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        if (user.getDeletedAt() != null || !Boolean.TRUE.equals(user.getIsActive())) {
+            throw new UsernameNotFoundException("User account is inactive");
+        }
 
         return new CustomUserDetails(user);
     }

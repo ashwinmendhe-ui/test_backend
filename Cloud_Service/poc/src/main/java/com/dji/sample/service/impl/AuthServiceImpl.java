@@ -5,6 +5,7 @@ import com.dji.sample.dto.request.RefreshTokenRequest;
 import com.dji.sample.dto.request.RegisterRequest;
 import com.dji.sample.dto.response.LoginResponse;
 import com.dji.sample.entity.User;
+import com.dji.sample.entity.UserRole;
 import com.dji.sample.repository.RoleRepository;
 import com.dji.sample.repository.UserRepository;
 import com.dji.sample.repository.UserRoleRepository;
@@ -14,11 +15,11 @@ import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import com.dji.sample.entity.UserRole;
-import java.util.stream.Collectors;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,11 +31,10 @@ public class AuthServiceImpl implements AuthService {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
 
-
     @Override
     public LoginResponse register(RegisterRequest request) {
 
-        if (userRepository.findByEmail(request.email()).isPresent()) {
+        if (userRepository.findByEmailAndDeletedAtIsNull(request.email()).isPresent()) {
             throw new IllegalArgumentException("Email already exists");
         }
 
@@ -68,16 +68,17 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public LoginResponse login(LoginRequest request) {
 
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmailAndDeletedAtIsNull(request.email())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
 
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid email or password");
         }
 
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new IllegalArgumentException("User account is inactive");
-        }
+        assertActiveUser(user);
+
+        user.setLastLoginAt(OffsetDateTime.now());
+        userRepository.save(user);
 
         List<String> roles = getRoleKeys(user.getUserId());
 
@@ -125,12 +126,10 @@ public class AuthServiceImpl implements AuthService {
             throw new IllegalArgumentException("Invalid refresh token");
         }
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new IllegalArgumentException("User account is inactive");
-        }
+        assertActiveUser(user);
 
         List<String> roles = getRoleKeys(user.getUserId());
 
@@ -157,6 +156,11 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    private void assertActiveUser(User user) {
+        if (user.getDeletedAt() != null || !Boolean.TRUE.equals(user.getIsActive())) {
+            throw new IllegalArgumentException("User account is inactive");
+        }
+    }
 
     private List<String> getRoleKeys(UUID userId) {
 
