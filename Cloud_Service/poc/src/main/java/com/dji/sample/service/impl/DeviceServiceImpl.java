@@ -1,5 +1,5 @@
 package com.dji.sample.service.impl;
-
+import com.dji.sample.service.IDeviceRedisService;
 import com.dji.sample.dto.request.DeviceRequest;
 import com.dji.sample.dto.response.DeviceResponse;
 import com.dji.sample.entity.Company;
@@ -32,7 +32,7 @@ public class DeviceServiceImpl implements DeviceService {
     private final SiteRepository siteRepository;
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final MissionRepository missionRepository;
-
+    private final IDeviceRedisService deviceRedisService;
     @Override
     @Transactional(readOnly = true)
     public List<DeviceResponse> getDevices(String keyword, String from, String to, UUID siteId) {
@@ -200,6 +200,19 @@ public class DeviceServiceImpl implements DeviceService {
         return trimmed;
     }
 
+    @Override
+    public void markDeviceOnlineForTest(String deviceSn) {
+        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn)
+                .orElseThrow(() -> new RuntimeException("Device not found"));
+
+        deviceRedisService.setDeviceOnline(device);
+    }
+
+    @Override
+    public void markDeviceOfflineForTest(String deviceSn) {
+        deviceRedisService.delDeviceOnline(deviceSn);
+    }
+
     private DeviceResponse toResponse(Device device) {
         Company company = device.getCompany();
         Site site = device.getSite();
@@ -240,10 +253,8 @@ public class DeviceServiceImpl implements DeviceService {
 
         String responseStatus = "offline";
 
-        boolean mockOnline =
-                "active".equalsIgnoreCase(device.getStatus());
-
-        if (mockOnline) {
+        if (device.getDeviceSn() != null
+                && deviceRedisService.getDeviceOnline(device.getDeviceSn()) != null) {
             if (missionId != null) {
                 responseStatus = "working";
             } else {

@@ -182,3 +182,41 @@ aws sts get-caller-identity
 
 ## we can also do
 mvn clean compile
+
+## for redis cli
+redis-cli keys '*'
+# also we can start terminal using
+redis-cli
+# its running on
+127.0.0.1:6379
+
+## for mosquitto
+brew install mosquitto
+
+# for running mosquitto, its running on 1883 port
+mosquitto -v
+# for 2nd terminal : testing purpose
+mosquitto_sub -h localhost -p 1883 -t 'sys/product/+/status'
+# 3rd terminal 
+mosquitto_pub -h localhost -p 1883 \
+-t 'sys/product/1234/status' \
+-m '{"tid":"t1","bid":"b1","timestamp":1710000000,"data":{"sub_devices":[{"sn":"camera-001"}]}}'
+
+
+## now test on BE API 
+# 1. start mosquitto server for checking server lsof -i:1883
+mosquitto -v
+# 2. then send msg on topic , publisher
+mosquitto_pub -h localhost -p 1883 \
+-t 'sys/product/1234/status' \
+-m '{"tid":"t1","bid":"b1","timestamp":1710000000,"data":{"sub_devices":[{"sn":"camera-001"}]}}'
+# 3. Our BE server is the client , subscriber 
+it will received this msg check logs 
+
+### For stoping or offline the device send below lsg
+# clean redis cache or send stop msg
+redis-cli del online:1234
+OR
+mosquitto_pub -h localhost -p 1883 \
+-t 'sys/product/1234/status' \
+-m '{"tid":"t2","bid":"b2","timestamp":1710000001,"data":{}}'

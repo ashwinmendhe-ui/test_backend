@@ -22,4 +22,8 @@ public interface DeviceService {
     DeviceResponse updateDevice(UUID deviceId, DeviceRequest request);
 
     void deleteDevice(UUID deviceId);
+
+    void markDeviceOnlineForTest(String deviceSn);
+
+    void markDeviceOfflineForTest(String deviceSn);
 }

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.dto.response.ApiResponse;
 
 @RestController
 @RequestMapping("/api/v1/devices")
@@ -47,5 +48,27 @@ public class DeviceController {
     @PostMapping("/delete/{deviceId}")
     public void deleteDevice(@PathVariable UUID deviceId) {
         deviceService.deleteDevice(deviceId);
+    }
+
+    @PostMapping("/{deviceSn}/online-test")
+    public ApiResponse<String> markDeviceOnline(@PathVariable String deviceSn) {
+        deviceService.markDeviceOnlineForTest(deviceSn);
+
+        return ApiResponse.<String>builder()
+                .success(true)
+                .message("Device marked online")
+                .data(deviceSn)
+                .build();
+    }
+
+    @PostMapping("/{deviceSn}/offline-test")
+    public ApiResponse<String> markDeviceOffline(@PathVariable String deviceSn) {
+        deviceService.markDeviceOfflineForTest(deviceSn);
+
+        return ApiResponse.<String>builder()
+                .success(true)
+                .message("Device marked offline")
+                .data(deviceSn)
+                .build();
     }
 }

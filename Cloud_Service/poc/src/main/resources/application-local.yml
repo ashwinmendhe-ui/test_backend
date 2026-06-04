@@ -23,6 +23,9 @@ spring:
     redis:
       host: localhost
       port: 6379
+    
+  redis:
+    device-alive-second: 84600
 
 logging:
   level:
@@ -51,3 +54,13 @@ aws:
   s3:
     mission-bucket: robopilot-mission
     stream-bucket: robopilot-stream-data
+
+
+mqtt:
+  enabled: true
+  host: localhost
+  port: 1883
+  client-id: dhive-local-backend
+  username:
+  password:
+  inbound-topic: sys/product/+/status  
