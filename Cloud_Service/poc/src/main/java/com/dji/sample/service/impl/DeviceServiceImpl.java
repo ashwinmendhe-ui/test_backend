@@ -17,7 +17,7 @@ import com.dji.sample.util.DateTimeUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.data.redis.core.StringRedisTemplate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -33,6 +33,7 @@ public class DeviceServiceImpl implements DeviceService {
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final MissionRepository missionRepository;
     private final IDeviceRedisService deviceRedisService;
+    private final StringRedisTemplate stringRedisTemplate;
     @Override
     @Transactional(readOnly = true)
     public List<DeviceResponse> getDevices(String keyword, String from, String to, UUID siteId) {
@@ -255,7 +256,12 @@ public class DeviceServiceImpl implements DeviceService {
 
         if (device.getDeviceSn() != null
                 && deviceRedisService.getDeviceOnline(device.getDeviceSn()) != null) {
-            if (missionId != null) {
+
+            String robotStatus = stringRedisTemplate.opsForValue()
+                    .get("robot:" + device.getDeviceSn() + ":status");
+
+            if ("RUNNING".equalsIgnoreCase(robotStatus)
+                    || "PENDING".equalsIgnoreCase(robotStatus)) {
                 responseStatus = "working";
             } else {
                 responseStatus = "online";

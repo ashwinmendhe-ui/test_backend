@@ -13,6 +13,10 @@ import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannel
 import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
 import org.springframework.messaging.MessageChannel;
 
+import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
+import org.springframework.messaging.MessageHandler;
+
+import jakarta.annotation.PostConstruct;
 @Configuration
 @RequiredArgsConstructor
 public class LocalMqttConfig {
@@ -57,7 +61,7 @@ public class LocalMqttConfig {
                 new MqttPahoMessageDrivenChannelAdapter(
                         clientId,
                         localMqttClientFactory,
-                        inboundTopic
+                        inboundTopic.split(",")
                 );
 
         DefaultPahoMessageConverter converter = new DefaultPahoMessageConverter();
@@ -68,5 +72,30 @@ public class LocalMqttConfig {
         adapter.setOutputChannel(deviceStatusMqttInputChannel());
 
         return adapter;
+    }
+
+    @Bean
+    public MessageChannel outboundRobotCommand() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    @ServiceActivator(inputChannel = "outboundRobotCommand")
+    public MessageHandler robotCommandMqttOutbound(
+            MqttPahoClientFactory localMqttClientFactory
+    ) {
+        MqttPahoMessageHandler handler =
+                new MqttPahoMessageHandler(clientId + "-robot-command", localMqttClientFactory);
+
+        handler.setAsync(true);
+        handler.setDefaultQos(1);
+        handler.setDefaultRetained(false);
+
+        return handler;
+    }
+
+    @PostConstruct
+    public void init() {
+        System.out.println("MQTT inbound topics = " + inboundTopic);
     }
 }
