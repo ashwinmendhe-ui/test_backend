@@ -6,6 +6,7 @@ import com.dji.sample.service.IDeviceRedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 public class DeviceRedisServiceImpl implements IDeviceRedisService {
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Value("${spring.redis.device-alive-second:84600}")
     private Long deviceAliveSecond;
@@ -41,6 +43,12 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
                 deviceAliveSecond,
                 TimeUnit.SECONDS
         );
+    }
+
+    @Override
+    public String getRobotTelemetry(String deviceSn) {
+        return stringRedisTemplate.opsForValue()
+                .get("robot:" + deviceSn + ":telemetry");
     }
 
     @Override

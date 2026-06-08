@@ -11,4 +11,5 @@ public interface IDeviceRedisService {
     void setDeviceOnline(Device device);
 
     Device getDeviceOnline(String sn);
+    String getRobotTelemetry(String deviceSn);
 }

@@ -2,6 +2,7 @@ package com.dji.sample.service;
 
 import com.dji.sample.dto.request.DeviceRequest;
 import com.dji.sample.dto.response.DeviceResponse;
+import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -26,4 +27,5 @@ public interface DeviceService {
     void markDeviceOnlineForTest(String deviceSn);
 
     void markDeviceOfflineForTest(String deviceSn);
+    RobotTelemetryResponse getTelemetryByDeviceSn(String deviceSn);
 }

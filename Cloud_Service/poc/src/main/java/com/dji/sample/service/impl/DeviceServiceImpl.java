@@ -21,6 +21,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +37,8 @@ public class DeviceServiceImpl implements DeviceService {
     private final MissionRepository missionRepository;
     private final IDeviceRedisService deviceRedisService;
     private final StringRedisTemplate stringRedisTemplate;
+    private final ObjectMapper objectMapper;
+
     @Override
     @Transactional(readOnly = true)
     public List<DeviceResponse> getDevices(String keyword, String from, String to, UUID siteId) {
@@ -214,6 +219,29 @@ public class DeviceServiceImpl implements DeviceService {
         deviceRedisService.delDeviceOnline(deviceSn);
     }
 
+    private RobotTelemetryResponse getTelemetryResponse(String deviceSn) {
+        if (deviceSn == null || deviceSn.isBlank()) {
+            return null;
+        }
+
+        String telemetryJson = deviceRedisService.getRobotTelemetry(deviceSn);
+
+        if (telemetryJson == null || telemetryJson.isBlank()) {
+            return null;
+        }
+
+        try {
+            return objectMapper.readValue(telemetryJson, RobotTelemetryResponse.class);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public RobotTelemetryResponse getTelemetryByDeviceSn(String deviceSn) {
+        return getTelemetryResponse(deviceSn);
+    }
     private DeviceResponse toResponse(Device device) {
         Company company = device.getCompany();
         Site site = device.getSite();
@@ -268,6 +296,8 @@ public class DeviceServiceImpl implements DeviceService {
             }
         }
 
+
+
         return DeviceResponse.builder()
                 .deviceId(device.getDeviceId())
                 .deviceName(device.getDeviceName())
@@ -286,6 +316,7 @@ public class DeviceServiceImpl implements DeviceService {
                 .createdAt(DateTimeUtil.formatKst(device.getCreatedAt()))
                 .updatedAt(DateTimeUtil.formatKst(device.getUpdatedAt()))
                 .createdDate(DateTimeUtil.formatKst(device.getCreatedAt()))
+                .telemetry(getTelemetryResponse(device.getDeviceSn()))
                 .build();
     }
 }

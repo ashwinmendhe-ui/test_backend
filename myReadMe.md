@@ -220,3 +220,26 @@ OR
 mosquitto_pub -h localhost -p 1883 \
 -t 'sys/product/1234/status' \
 -m '{"tid":"t2","bid":"b2","timestamp":1710000001,"data":{}}'
+
+
+## for health send status from robot/drone , in local testing
+# 1. terminal start mosquitto server 
+mosquitto -v
+
+# before step two check
+redis-cli keys '*'
+# if anything just delete that by below command
+redis-cli del online:1234
+# 2. terminal our robot/drone as client publich some status 
+mosquitto_pub -h localhost -p 1883 \
+-t 'robot/1234/health' \
+-m '{"schema":"robot-mqtt.v1","msg_id":"msg-1","robot_id":"1234","timestamp":"2026-06-05T10:00:00Z","data":{"online":true,"status":"IDLE"}}'
+
+# 3. our spring-boot as client receives this. 
+
+
+
+## same for offline the status
+mosquitto_pub -h localhost -p 1883 \
+-t 'robot/1234/health' \
+-m '{"schema":"robot-mqtt.v1","msg_id":"msg-2","robot_id":"1234","timestamp":"2026-06-05T10:00:00Z","data":{"online":false}}'

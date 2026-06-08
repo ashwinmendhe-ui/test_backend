@@ -6,6 +6,8 @@ import lombok.Setter;
 
 import java.util.UUID;
 
+import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
+
 @Getter
 @Setter
 @Builder
@@ -40,5 +42,5 @@ public class DeviceResponse {
     private String createdDate;
     private UUID missionId;
     private String missionName;
-    
+    private RobotTelemetryResponse telemetry;
 }

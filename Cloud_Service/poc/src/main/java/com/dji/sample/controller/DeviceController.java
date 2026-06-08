@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 import com.dji.sample.dto.response.ApiResponse;
+import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
 
 @RestController
 @RequestMapping("/api/v1/devices")
@@ -30,6 +31,18 @@ public class DeviceController {
     @GetMapping("/{deviceId}")
     public DeviceResponse getDevice(@PathVariable UUID deviceId) {
         return deviceService.getDevice(deviceId);
+    }
+
+
+    @GetMapping("/{deviceSn}/telemetry")
+    public ApiResponse<RobotTelemetryResponse> getDeviceTelemetry(
+            @PathVariable String deviceSn
+    ) {
+        return ApiResponse.<RobotTelemetryResponse>builder()
+                .success(true)
+                .message("Device telemetry fetched successfully")
+                .data(deviceService.getTelemetryByDeviceSn(deviceSn))
+                .build();
     }
 
     @PostMapping
