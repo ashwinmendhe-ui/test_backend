@@ -251,24 +251,45 @@ public class DeviceServiceImpl implements DeviceService {
         boolean hasActiveStream = false;
 
         if (device.getDeviceSn() != null) {
-            var activeSession = liveStreamSessionRepository
-                    .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                            device.getDeviceSn(),
-                            "ACTIVE"
-                    );
+    var activeSession = liveStreamSessionRepository
+            .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
+                    device.getDeviceSn(),
+                    "ACTIVE"
+            );
 
-            hasActiveStream = activeSession.isPresent();
+    hasActiveStream = activeSession.isPresent();
 
-            if (activeSession.isPresent() && activeSession.get().getMissionId() != null) {
-                missionId = activeSession.get().getMissionId();
+    if (activeSession.isPresent() && activeSession.get().getMissionId() != null) {
+        missionId = activeSession.get().getMissionId();
 
-                        Mission mission = missionRepository
-                                .findByMissionIdAndDeletedAtIsNull(missionId)
-                                .orElse(null);
+        Mission mission = missionRepository
+                .findByMissionIdAndDeletedAtIsNull(missionId)
+                .orElse(null);
 
-                        missionName = mission != null ? mission.getMissionName() : null;
-                    }
+        missionName = mission != null ? mission.getMissionName() : null;
+    }
+}
+
+        if (missionId == null && device.getDeviceSn() != null) {
+            String redisMissionId = stringRedisTemplate.opsForValue()
+                    .get("robot:" + device.getDeviceSn() + ":missionId");
+
+            if (redisMissionId != null && !redisMissionId.isBlank()) {
+                try {
+                    missionId = UUID.fromString(redisMissionId);
+
+                    Mission mission = missionRepository
+                            .findByMissionIdAndDeletedAtIsNull(missionId)
+                            .orElse(null);
+
+                    missionName = mission != null ? mission.getMissionName() : null;
+
+                } catch (Exception e) {
+                    missionId = null;
+                    missionName = null;
                 }
+            }
+        }
 
         if (missionId == null && device.getMissionId() != null) {
             missionId = device.getMissionId();
@@ -279,6 +300,7 @@ public class DeviceServiceImpl implements DeviceService {
 
             missionName = mission != null ? mission.getMissionName() : null;
         }
+
 
         String responseStatus = "offline";
 

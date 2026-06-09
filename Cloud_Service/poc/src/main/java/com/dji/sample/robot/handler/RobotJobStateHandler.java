@@ -1,11 +1,14 @@
 package com.dji.sample.robot.handler;
 
 import com.dji.sample.robot.entity.RobotJobStateData;
+import com.dji.sample.robot.service.RobotWebSocketPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+
+
 
 @Slf4j
 @Component
@@ -14,6 +17,7 @@ public class RobotJobStateHandler {
 
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
+    private final RobotWebSocketPublisher webSocketPublisher;
 
     public void handle(String deviceSn, String payload) {
         try {
@@ -35,6 +39,8 @@ public class RobotJobStateHandler {
             if (jobState.getMissionId() != null) {
                 stringRedisTemplate.opsForValue().set(missionKey, jobState.getMissionId());
             }
+            webSocketPublisher.publishStatus(deviceSn, jobState);
+
 
             log.info("Robot job state received. deviceSn={}, jobId={}, status={}, missionId={}, message={}",
                     deviceSn,

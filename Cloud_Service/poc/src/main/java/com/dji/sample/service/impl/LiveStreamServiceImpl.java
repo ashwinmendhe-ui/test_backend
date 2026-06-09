@@ -140,18 +140,34 @@ public class LiveStreamServiceImpl implements LiveStreamService {
 
         return mapToResponse(saved);
         }
-    @Override
-    public StreamInfoResponse getStreamInfo(UUID streamId) {
+        @Override
+        public StreamInfoResponse getStreamInfo(String streamId) {
 
-        LiveStreamSession session =
-                liveStreamSessionRepository
-                        .findById(streamId)
+        LiveStreamSession session;
+
+        try {
+                UUID sessionId = UUID.fromString(streamId);
+
+                session = liveStreamSessionRepository
+                        .findById(sessionId)
                         .orElseThrow(() ->
                                 new RuntimeException("Stream not found")
                         );
 
+        } catch (IllegalArgumentException e) {
+
+                session = liveStreamSessionRepository
+                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
+                                streamId,
+                                "ACTIVE"
+                        )
+                        .orElseThrow(() ->
+                                new RuntimeException("Active stream not found for device")
+                        );
+        }
+
         return mapToResponse(session);
-    }
+        }
 
         @Override
         public StreamInfoResponse heartbeat(UUID sessionId) {

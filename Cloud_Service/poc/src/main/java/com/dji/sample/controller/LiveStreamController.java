@@ -42,15 +42,15 @@ public class LiveStreamController {
     }
 
     @GetMapping("/stream-info/{streamId}")
-    public ApiResponse<StreamInfoResponse> getStreamInfo(
-            @PathVariable UUID streamId
-    ) {
+        public ApiResponse<StreamInfoResponse> getStreamInfo(
+                @PathVariable String streamId
+        ) {
         return ApiResponse.<StreamInfoResponse>builder()
                 .success(true)
                 .message("Stream info fetched successfully")
                 .data(liveStreamService.getStreamInfo(streamId))
                 .build();
-    }
+        }
 
     @PostMapping("/streams/heartbeat")
     public ApiResponse<StreamInfoResponse> heartbeat(
@@ -62,6 +62,7 @@ public class LiveStreamController {
                 .data(liveStreamService.heartbeat(sessionId))
                 .build();
     }
+
 
     @GetMapping("/streams/status")
     public ApiResponse<StreamStatusResponse> getStreamStatus(

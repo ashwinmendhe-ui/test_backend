@@ -14,7 +14,7 @@ public interface LiveStreamService {
 
     StreamInfoResponse stopStream(StopStreamRequest request);
 
-    StreamInfoResponse getStreamInfo(UUID streamId);
+    StreamInfoResponse getStreamInfo(String streamId);
 
     StreamInfoResponse heartbeat(UUID sessionId);
 
