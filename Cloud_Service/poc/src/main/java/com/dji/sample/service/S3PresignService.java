@@ -10,11 +10,15 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 import java.time.Duration;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import java.io.InputStream;
 
 @Service
 public class S3PresignService {
 
     private final S3Presigner presigner;
+    private final S3Client s3Client;
 
     @Value("${aws.s3.mission-bucket}")
     private String missionBucket;
@@ -23,7 +27,35 @@ public class S3PresignService {
         this.presigner = S3Presigner.builder()
                 .region(Region.of(region))
                 .build();
-    }
+
+        this.s3Client = S3Client.builder()
+                .region(Region.of(region))
+                .build();
+        }
+
+
+    public InputStream getStreamObject(String objectKey) {
+        GetObjectRequest request = GetObjectRequest.builder()
+                .bucket(streamBucket)
+                .key(objectKey)
+                .build();
+
+        return s3Client.getObject(request);
+        }
+
+        public boolean streamObjectExists(String objectKey) {
+        try {
+                HeadObjectRequest request = HeadObjectRequest.builder()
+                        .bucket(streamBucket)
+                        .key(objectKey)
+                        .build();
+
+                s3Client.headObject(request);
+                return true;
+        } catch (Exception e) {
+                return false;
+        }
+        }
 
     public String createUploadUrl(String objectKey) {
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()

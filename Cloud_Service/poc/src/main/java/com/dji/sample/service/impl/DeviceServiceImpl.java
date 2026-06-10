@@ -310,7 +310,8 @@ public class DeviceServiceImpl implements DeviceService {
             String robotStatus = stringRedisTemplate.opsForValue()
                     .get("robot:" + device.getDeviceSn() + ":status");
 
-            if ("RUNNING".equalsIgnoreCase(robotStatus)
+            if ("WORKING".equalsIgnoreCase(robotStatus)
+                    || "RUNNING".equalsIgnoreCase(robotStatus)
                     || "PENDING".equalsIgnoreCase(robotStatus)) {
                 responseStatus = "working";
             } else {

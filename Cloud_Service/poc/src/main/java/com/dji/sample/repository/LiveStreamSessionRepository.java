@@ -3,6 +3,7 @@ package com.dji.sample.repository;
 import com.dji.sample.entity.LiveStreamSession;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,6 +14,15 @@ public interface LiveStreamSessionRepository extends JpaRepository<LiveStreamSes
     Optional<LiveStreamSession> findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
             String deviceSn,
             String sessionStatus
+    );
+
+    List<LiveStreamSession> findByDeviceSnAndSessionStatusOrderByStartedAtAsc(
+            String deviceSn,
+            String sessionStatus
+    );
+
+    Optional<LiveStreamSession> findFirstByDeviceSnAndPlaybackUrlIsNotNullOrderByStartedAtAsc(
+            String deviceSn
     );
 
     boolean existsByDeviceSnAndSessionStatus(
@@ -26,4 +36,6 @@ public interface LiveStreamSessionRepository extends JpaRepository<LiveStreamSes
             String deviceSn,
             UUID missionId
     );
+
+    long countByDeviceSnAndSessionStatus(String deviceSn, String sessionStatus);
 }

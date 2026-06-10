@@ -12,4 +12,6 @@ public interface IDeviceRedisService {
 
     Device getDeviceOnline(String sn);
     String getRobotTelemetry(String deviceSn);
+    void clearRobotJobState(String deviceSn);
+    void setRobotJobState(String deviceSn, String jobId, String status, String missionId);
 }

@@ -10,6 +10,7 @@ import org.springframework.integration.annotation.ServiceActivator;
 import org.springframework.integration.mqtt.support.MqttHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
+import com.dji.sample.robot.handler.RobotHealthHandler;
 
 @Slf4j
 @Component
@@ -19,7 +20,7 @@ public class LocalMqttMessageHandler {
     private final RobotResponseHandler robotResponseHandler;
     private final RobotJobStateHandler robotJobStateHandler;
     private final RobotTelemetryHandler robotTelemetryHandler;
-
+    private final RobotHealthHandler robotHealthHandler;
     @ServiceActivator(inputChannel = LocalMqttConfig.DEVICE_STATUS_CHANNEL)
     public void handle(Message<?> message) {
         String topic = message.getHeaders().get(MqttHeaders.RECEIVED_TOPIC, String.class);
@@ -35,6 +36,12 @@ public class LocalMqttMessageHandler {
         if (topic.startsWith("robot/") && topic.endsWith("/response")) {
             String deviceSn = topic.split("/")[1];
             robotResponseHandler.handle(deviceSn, payload);
+            return;
+        }
+
+        if (topic.startsWith("robot/") && topic.endsWith("/health")) {
+            String deviceSn = topic.split("/")[1];
+            robotHealthHandler.handle(deviceSn, payload);
             return;
         }
 

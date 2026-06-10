@@ -19,11 +19,13 @@ import org.springframework.stereotype.Service;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
-import com.dji.sample.service.S3PresignService;
 
-import com.dji.sample.entity.ReportHistory;
-import com.dji.sample.repository.ReportHistoryRepository;
-import java.time.Duration;
+import com.dji.sample.service.IDeviceRedisService;
+import com.dji.sample.dto.request.AiServiceStreamRequest;
+import com.dji.sample.service.IAiServiceClient;
+import org.springframework.beans.factory.annotation.Value;
+import com.dji.sample.dto.request.CreateHistoryRequest;
+import com.dji.sample.service.HistoryService;
 
 @Service
 @RequiredArgsConstructor
@@ -31,10 +33,16 @@ public class LiveStreamServiceImpl implements LiveStreamService {
 
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final DeviceRepository deviceRepository;
-    private final S3PresignService s3PresignService;
-    private final ReportHistoryRepository reportHistoryRepository;
-    @Override
-    public StartStreamResponse startStream(StartStreamRequest request) {
+    private final IDeviceRedisService deviceRedisService;
+    private final HistoryService historyService;
+   
+        private final IAiServiceClient aiServiceClient;
+
+        @Value("${ai-service.rtmp-url}")
+        private String rtmpBaseUrl;
+    
+       @Override
+        public StartStreamResponse startStream(StartStreamRequest request) {
 
         boolean activeDeviceSessionExists =
                 liveStreamSessionRepository.existsByDeviceSnAndSessionStatus(
@@ -43,19 +51,19 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                 );
 
         if (activeDeviceSessionExists) {
-            throw new RuntimeException("Device already has an active stream");
+                throw new RuntimeException("Device already has an active stream");
         }
 
         if (request.getMissionId() != null) {
-            boolean activeMissionSessionExists =
-                    liveStreamSessionRepository.existsByMissionIdAndSessionStatus(
-                            request.getMissionId(),
-                            "ACTIVE"
-                    );
+                boolean activeMissionSessionExists =
+                        liveStreamSessionRepository.existsByMissionIdAndSessionStatus(
+                                request.getMissionId(),
+                                "ACTIVE"
+                        );
 
-            if (activeMissionSessionExists) {
+                if (activeMissionSessionExists) {
                 throw new RuntimeException("Mission already has an active stream");
-            }
+                }
         }
 
         Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
@@ -79,24 +87,63 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                         ? request.getVideoId().toString()
                         : null
         );
-        String streamObjectKey =
-                "streams/1581F7FVC25A700DF473/2026-04-02_11-59-11/index.m3u8";
 
-        String playbackUrl =
-                s3PresignService.createStreamDownloadUrl(streamObjectKey);      
+        // String streamObjectKey =
+        //         "streams/1581F7FVC25A700DF473/2026-04-02_11-59-11/index.m3u8";
 
+        // String playbackUrl =
+        //         s3PresignService.createStreamDownloadUrl(streamObjectKey);
+
+
+        String rtmpUrl = rtmpBaseUrl + "/streams/" + request.getDeviceSn();
+        String vectorMapUrl = rtmpBaseUrl + "/streams/" + request.getDeviceSn() + "-vector";
+
+        AiServiceStreamRequest aiRequest = AiServiceStreamRequest.builder()
+                .uri(rtmpUrl)
+                .vectorMapUri(vectorMapUrl)
+                .streamId(request.getDeviceSn())
+                .deviceId(device.getDeviceId())
+                .deviceName(device.getDeviceName())
+                .companyId(device.getCompany() != null ? device.getCompany().getCompanyId() : null)
+                .companyName(device.getCompany() != null ? device.getCompany().getName() : null)
+                .siteId(device.getSite() != null ? device.getSite().getSiteId() : null)
+                .siteName(device.getSite() != null ? device.getSite().getName() : null)
+                .missionId(request.getMissionId())
+                .sessionStartTime(session.getStartedAt())
+                .build();
+
+        String playbackUrl = aiServiceClient.registerStream(aiRequest);
+
+        if (playbackUrl == null || playbackUrl.isBlank()) {
+        throw new RuntimeException("AI service stream registration failed");
+        }
+
+        session.setPlaybackUrl(playbackUrl);
+
+        // Keep original S3 presigned URL in DB
         session.setPlaybackUrl(playbackUrl);
 
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
 
+        String hlsUrl = buildBackendHlsUrl(saved.getId());
+
         device.setMissionId(request.getMissionId());
         deviceRepository.save(device);
+        
+        if (request.getMissionId() != null) {
+                deviceRedisService.setRobotJobState(
+                        request.getDeviceSn(),
+                        "stream-" + saved.getId(),
+                        "WORKING",
+                        request.getMissionId().toString()
+                );
+                }
 
         return StartStreamResponse.builder()
                 .sessionId(saved.getId())
                 .streamId(saved.getId())
                 .id(saved.getId())
-                .playbackUrl(saved.getPlaybackUrl())
+                .playbackUrl(hlsUrl)
                 .sessionStatus(saved.getSessionStatus())
                 .status(saved.getSessionStatus())
 
@@ -107,8 +154,8 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                 .isSendHeartBeat(true)
 
                 .build();
-    }
-
+        }
+       
         @Override
         public StreamInfoResponse stopStream(StopStreamRequest request) {
 
@@ -121,6 +168,12 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                         .orElseThrow(() ->
                                 new RuntimeException("Active stream not found")
                         );
+
+        try {
+        aiServiceClient.unregisterStream(request.getDeviceSn());
+        } catch (Exception e) {
+        throw new RuntimeException("AI service stream unregister failed: " + e.getMessage(), e);
+        }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
@@ -135,8 +188,13 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         
         device.setMissionId(null);
         deviceRepository.save(device);
+        deviceRedisService.clearRobotJobState(request.getDeviceSn());
+        CreateHistoryRequest historyRequest = new CreateHistoryRequest();
+        historyRequest.setDeviceSn(saved.getDeviceSn());
+        historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
+        historyRequest.setMissionId(saved.getMissionId());
 
-        createReportHistory(saved, device);
+        historyService.createHistory(historyRequest);
 
         return mapToResponse(saved);
         }
@@ -230,43 +288,14 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         throw new RuntimeException("Invalid authenticated user principal");
     }
 
-    private void createReportHistory(LiveStreamSession session, Device device) {
-
-        if (session.getPlaybackUrl() == null || session.getPlaybackUrl().isBlank()) {
-                return;
-        }
-
-        String totalTime = null;
-
-        if (session.getStartedAt() != null && session.getStoppedAt() != null) {
-                Duration duration = Duration.between(session.getStartedAt(), session.getStoppedAt());
-
-                long hours = duration.toHours();
-                long minutes = duration.toMinutesPart();
-                long seconds = duration.toSecondsPart();
-
-                totalTime = String.format("%02d:%02d:%02d", hours, minutes, seconds);
-        }
-
-        ReportHistory history = ReportHistory.builder()
-                .deviceSn(session.getDeviceSn())
-                .playbackUrl(session.getPlaybackUrl())
-                .companyId(device.getCompany() != null ? device.getCompany().getCompanyId() : null)
-                .siteId(device.getSite() != null ? device.getSite().getSiteId() : null) 
-                .missionId(session.getMissionId())
-                .userId(session.getUserId())
-                .startTime(session.getStartedAt())
-                .endTime(session.getStoppedAt())
-                .totalTime(totalTime)
-                .totalRecognition(0)
-                .videoStatus("AVAILABLE")
-                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
-                .build();
-
-        reportHistoryRepository.save(history);
+    
+    private String buildBackendHlsUrl(UUID sessionId) {
+        return "http://localhost:6789/api/v1/live/hls/" + sessionId + "/index.m3u8";
         }
 
     private StreamInfoResponse mapToResponse(LiveStreamSession session) {
+        String hlsUrl = buildBackendHlsUrl(session.getId());
+
         return StreamInfoResponse.builder()
                 .id(session.getId())
                 .deviceSn(session.getDeviceSn())
@@ -283,19 +312,19 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                 .lastHeartbeatAt(session.getLastHeartbeatAt())
                 .stoppedAt(session.getStoppedAt())
 
-                .playbackUrl(session.getPlaybackUrl())
-                .playback_url(session.getPlaybackUrl())
+                .playbackUrl(hlsUrl)
+                .playback_url(hlsUrl)
 
-                .mapUrl(session.getPlaybackUrl())
-                .map_url(session.getPlaybackUrl())
+                .mapUrl(hlsUrl)
+                .map_url(hlsUrl)
 
-                .url(session.getPlaybackUrl())
-                .streamUrl(session.getPlaybackUrl())
-                .liveUrl(session.getPlaybackUrl())
-                .cameraUrl(session.getPlaybackUrl())
+                .url(hlsUrl)
+                .streamUrl(hlsUrl)
+                .liveUrl(hlsUrl)
+                .cameraUrl(hlsUrl)
 
                 .missionId(session.getMissionId())
                 .videoId(session.getVideoId())
                 .build();
-    }
+        }
 }

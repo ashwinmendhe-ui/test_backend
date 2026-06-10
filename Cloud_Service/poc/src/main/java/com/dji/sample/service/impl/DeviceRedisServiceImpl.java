@@ -52,6 +52,25 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
     }
 
     @Override
+    public void clearRobotJobState(String deviceSn) {
+        redisTemplate.delete("robot:" + deviceSn + ":jobId");
+        redisTemplate.delete("robot:" + deviceSn + ":status");
+        redisTemplate.delete("robot:" + deviceSn + ":missionId");
+    }
+
+    @Override
+    public void setRobotJobState(
+            String deviceSn,
+            String jobId,
+            String status,
+            String missionId
+    ) {
+        stringRedisTemplate.opsForValue().set("robot:" + deviceSn + ":jobId", jobId);
+        stringRedisTemplate.opsForValue().set("robot:" + deviceSn + ":status", status);
+        stringRedisTemplate.opsForValue().set("robot:" + deviceSn + ":missionId", missionId);
+    }
+
+    @Override
     public Device getDeviceOnline(String sn) {
         String key = RedisConst.DEVICE_ONLINE_PREFIX + sn;
 

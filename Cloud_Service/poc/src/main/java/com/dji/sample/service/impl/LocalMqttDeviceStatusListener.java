@@ -12,6 +12,10 @@ import org.springframework.integration.mqtt.support.MqttHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Service;
 
+import com.dji.sample.robot.handler.RobotHealthHandler;
+import com.dji.sample.robot.handler.RobotJobStateHandler;
+import com.dji.sample.robot.handler.RobotTelemetryHandler;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -20,6 +24,9 @@ public class LocalMqttDeviceStatusListener {
     private final ObjectMapper objectMapper;
     private final DeviceRepository deviceRepository;
     private final IDeviceRedisService deviceRedisService;
+    private final RobotHealthHandler robotHealthHandler;
+    private final RobotJobStateHandler robotJobStateHandler;
+    private final RobotTelemetryHandler robotTelemetryHandler;
 
     @ServiceActivator(inputChannel = "deviceStatusMqttInputChannel")
     public void handleMessage(Message<?> message) {
@@ -36,6 +43,18 @@ public class LocalMqttDeviceStatusListener {
 
             if (topic.startsWith("robot/") && topic.endsWith("/health")) {
                 handleRobotHealth(topic, payload);
+                return;
+            }
+
+            if (topic.startsWith("robot/") && topic.endsWith("/telemetry")) {
+                String deviceSn = extractRobotDeviceSn(topic, "/telemetry");
+                robotTelemetryHandler.handle(deviceSn, payload);
+                return;
+            }
+
+            if (topic.startsWith("robot/") && topic.endsWith("/job/state")) {
+                String deviceSn = extractRobotDeviceSn(topic, "/job/state");
+                robotJobStateHandler.handle(deviceSn, payload);
                 return;
             }
 
@@ -67,7 +86,7 @@ public class LocalMqttDeviceStatusListener {
         String deviceSn = root.path("robot_id").asText(null);
 
         if (deviceSn == null || deviceSn.isBlank()) {
-            deviceSn = extractRobotDeviceSn(topic);
+            deviceSn = extractRobotDeviceSn(topic, "/health");
         }
 
         boolean online = root.path("data").path("online").asBoolean(false);
@@ -103,12 +122,11 @@ public class LocalMqttDeviceStatusListener {
         return topic.substring(prefix.length(), topic.length() - suffix.length());
     }
 
-    private String extractRobotDeviceSn(String topic) {
+    private String extractRobotDeviceSn(String topic, String suffix) {
         String prefix = "robot/";
-        String suffix = "/health";
 
         if (!topic.startsWith(prefix) || !topic.endsWith(suffix)) {
-            throw new IllegalArgumentException("Invalid robot health topic: " + topic);
+            throw new IllegalArgumentException("Invalid robot topic: " + topic);
         }
 
         return topic.substring(prefix.length(), topic.length() - suffix.length());

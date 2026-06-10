@@ -13,7 +13,14 @@ import java.util.*;
 import com.dji.sample.util.DateTimeUtil;
 import com.dji.sample.dto.request.CreateHistoryRequest;
 import java.time.Duration;
+import com.dji.sample.dto.response.BookmarkResponse;
+import com.dji.sample.service.S3PresignService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 
 
 @Service
@@ -27,6 +34,8 @@ public class HistoryServiceImpl implements HistoryService {
     private final DeviceRepository deviceRepository;
     private final UserRepository userRepository;
     private final LiveStreamSessionRepository liveStreamSessionRepository;
+    private final S3PresignService s3PresignService;
+    private final ObjectMapper objectMapper;
     
     @Override
     public List<HistoryListResponse> getList() {
@@ -69,8 +78,8 @@ public class HistoryServiceImpl implements HistoryService {
                 .distance("")
                 .playbackUrl(history.getPlaybackUrl())
                 .reportCreatedAt(format(history.getEndTime() != null ? history.getEndTime() : history.getStartTime()))
-                .labelCounts(Collections.emptyMap())
-                .bookmarks(Collections.emptyList())
+                .labelCounts(loadLabelCounts(history.getPlaybackUrl()))
+                .bookmarks(loadBookmarks(history.getPlaybackUrl()))
                 .build();
     }
 
@@ -187,6 +196,9 @@ public class HistoryServiceImpl implements HistoryService {
                 ? session.getStoppedAt()
                 : OffsetDateTime.now();
 
+        Map<String, Integer> labelCounts = loadLabelCounts(request.getPlaybackUrl());
+        int totalRecognition = labelCounts.values().stream().mapToInt(Integer::intValue).sum();
+
         ReportHistory history = ReportHistory.builder()
                 .historyId(UUID.randomUUID())
                 .deviceSn(request.getDeviceSn())
@@ -198,7 +210,7 @@ public class HistoryServiceImpl implements HistoryService {
                 .startTime(startTime)
                 .endTime(endTime)
                 .totalTime(calculateTotalTime(startTime, endTime))
-                .totalRecognition(0)
+                .totalRecognition(totalRecognition)
                 .createdAt(OffsetDateTime.now())
                 .videoStatus("AVAILABLE")
                 .build();
@@ -206,6 +218,139 @@ public class HistoryServiceImpl implements HistoryService {
         ReportHistory saved = reportHistoryRepository.save(history);
 
         return getDetail(saved.getHistoryId());
+    }
+
+
+    private String extractFolderPathFromUrl(String playbackUrl) {
+        int idx = playbackUrl.indexOf("/streams/");
+        if (idx < 0) {
+            return null;
+        }
+
+        String after = playbackUrl.substring(idx + "/streams/".length());
+        String[] parts = after.split("/");
+
+        if (parts.length < 2) {
+            return null;
+        }
+
+        return parts[0] + "/" + parts[1];
+    }
+
+    private Map<String, Integer> loadLabels(String playbackUrl) {
+        try {
+            String folderPath = extractFolderPathFromUrl(playbackUrl);
+            if (folderPath == null) return Collections.emptyMap();
+
+            String objectKey = folderPath + "/info.json";
+
+            try (InputStream is = s3PresignService.getStreamObject(objectKey)) {
+                JsonNode root = objectMapper.readTree(is);
+                JsonNode labelsNode = root.get("labels");
+
+                if (labelsNode == null || !labelsNode.isObject()) {
+                    return Collections.emptyMap();
+                }
+
+                Map<String, Integer> labels = new HashMap<>();
+                labelsNode.fields().forEachRemaining(entry ->
+                        labels.put(entry.getKey(), entry.getValue().asInt())
+                );
+
+                return labels;
+            }
+        } catch (Exception e) {
+            return Collections.emptyMap();
+        }
+    }
+
+    private List<BookmarkRaw> loadBookmarkRaw(String playbackUrl) {
+        try {
+            String folderPath = extractFolderPathFromUrl(playbackUrl);
+            if (folderPath == null) return Collections.emptyList();
+
+            String objectKey = folderPath + "/bookmark.ndjson";
+            List<BookmarkRaw> result = new ArrayList<>();
+
+            try (InputStream is = s3PresignService.getStreamObject(objectKey);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) continue;
+
+                    JsonNode node = objectMapper.readTree(line);
+
+                    BookmarkRaw raw = new BookmarkRaw();
+                    raw.labelIds = new ArrayList<>();
+
+                    JsonNode cAr = node.get("c_ar");
+                    if (cAr != null && cAr.isArray()) {
+                        for (JsonNode item : cAr) {
+                            raw.labelIds.add(item.asInt());
+                        }
+                    }
+
+                    raw.offset = node.has("o") ? node.get("o").asLong() : 0L;
+                    result.add(raw);
+                }
+            }
+
+            return result;
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    private Map<String, Integer> loadLabelCounts(String playbackUrl) {
+        Map<String, Integer> labels = loadLabels(playbackUrl);
+        if (labels.isEmpty()) return Collections.emptyMap();
+
+        Map<Integer, String> idToName = new HashMap<>();
+        labels.forEach((name, id) -> idToName.put(id, name));
+
+        Map<String, Integer> counts = new HashMap<>();
+
+        for (BookmarkRaw bookmark : loadBookmarkRaw(playbackUrl)) {
+            for (Integer labelId : bookmark.labelIds) {
+                String labelName = idToName.get(labelId);
+                if (labelName != null) {
+                    counts.put(labelName, counts.getOrDefault(labelName, 0) + 1);
+                }
+            }
+        }
+
+        return counts;
+    }
+
+    private List<BookmarkResponse> loadBookmarks(String playbackUrl) {
+        Map<String, Integer> labels = loadLabels(playbackUrl);
+        if (labels.isEmpty()) return Collections.emptyList();
+
+        Map<Integer, String> idToName = new HashMap<>();
+        labels.forEach((name, id) -> idToName.put(id, name));
+
+        List<BookmarkResponse> responses = new ArrayList<>();
+
+        for (BookmarkRaw bookmark : loadBookmarkRaw(playbackUrl)) {
+            for (Integer labelId : bookmark.labelIds) {
+                String labelName = idToName.get(labelId);
+                if (labelName != null) {
+                    responses.add(BookmarkResponse.builder()
+                            .label(labelName)
+                            .mdisplay("")
+                            .duration("")
+                            .build());
+                }
+            }
+        }
+
+        return responses;
+    }
+
+    private static class BookmarkRaw {
+        List<Integer> labelIds;
+        Long offset;
     }
     private String format(OffsetDateTime value) {
         String formatted = DateTimeUtil.formatKst(value);

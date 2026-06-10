@@ -6,7 +6,15 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "report_history")
+@Table(
+    name = "report_history",
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uk_report_history_device_playback",
+            columnNames = {"device_sn", "playback_url"}
+        )
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor

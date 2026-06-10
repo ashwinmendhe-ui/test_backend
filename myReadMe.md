@@ -243,3 +243,7 @@ mosquitto_pub -h localhost -p 1883 \
 mosquitto_pub -h localhost -p 1883 \
 -t 'robot/1234/health' \
 -m '{"schema":"robot-mqtt.v1","msg_id":"msg-2","robot_id":"1234","timestamp":"2026-06-05T10:00:00Z","data":{"online":false}}'
+
+
+## for check and test
+mvn -q -DskipTests compile
