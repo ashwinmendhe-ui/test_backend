@@ -98,18 +98,38 @@ public class LiveHlsProxyController {
     }
 
     private String extractObjectKey(String playbackUrl) {
-        String marker = ".amazonaws.com/";
-        int start = playbackUrl.indexOf(marker);
 
-        if (start < 0) {
-            throw new RuntimeException("Invalid S3 playback URL");
+        if (playbackUrl.contains(".amazonaws.com/")) {
+
+            String marker = ".amazonaws.com/";
+            int start = playbackUrl.indexOf(marker);
+
+            String keyWithQuery =
+                    playbackUrl.substring(start + marker.length());
+
+            int queryIndex = keyWithQuery.indexOf("?");
+
+            return queryIndex >= 0
+                    ? keyWithQuery.substring(0, queryIndex)
+                    : keyWithQuery;
         }
 
-        String keyWithQuery = playbackUrl.substring(start + marker.length());
-        int queryIndex = keyWithQuery.indexOf("?");
+        if (playbackUrl.contains(".cloudfront.net/")) {
 
-        return queryIndex >= 0
-                ? keyWithQuery.substring(0, queryIndex)
-                : keyWithQuery;
+            String marker = ".cloudfront.net/";
+            int start = playbackUrl.indexOf(marker);
+
+            String keyWithQuery =
+                    playbackUrl.substring(start + marker.length());
+
+            int queryIndex = keyWithQuery.indexOf("?");
+
+            return queryIndex >= 0
+                    ? keyWithQuery.substring(0, queryIndex)
+                    : keyWithQuery;
+        }
+
+        throw new RuntimeException("Unsupported playback URL: " + playbackUrl);
     }
+
 }

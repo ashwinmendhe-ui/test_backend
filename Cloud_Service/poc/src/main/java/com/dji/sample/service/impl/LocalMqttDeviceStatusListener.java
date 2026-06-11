@@ -58,6 +58,12 @@ public class LocalMqttDeviceStatusListener {
                 return;
             }
 
+            if (topic.startsWith("robot/") && topic.endsWith("/state")) {
+                String deviceSn = extractRobotDeviceSn(topic, "/state");
+                robotJobStateHandler.handle(deviceSn, payload);
+                return;
+}
+
             log.warn("[MQTT] Unsupported topic: {}", topic);
 
         } catch (Exception e) {

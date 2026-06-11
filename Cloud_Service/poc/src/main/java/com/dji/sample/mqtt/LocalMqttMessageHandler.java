@@ -51,6 +51,12 @@ public class LocalMqttMessageHandler {
             return;
         }
 
+        if (topic.startsWith("robot/") && topic.endsWith("/state")) {
+            String deviceSn = topic.split("/")[1];
+            robotJobStateHandler.handle(deviceSn, payload);
+            return;
+        }
+
         if (topic.matches("robot/[^/]+/telemetry")) {
             String deviceSn = topic.split("/")[1];
             robotTelemetryHandler.handle(deviceSn, payload);

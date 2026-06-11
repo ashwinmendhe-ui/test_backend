@@ -13,12 +13,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-/**
- * Implementation of AI Service Client for stream processing integration
- * 
- * @author DHive Team
- * @date 2025-12-22
- */
 @Service
 @Slf4j
 public class AiServiceClientImpl implements IAiServiceClient {
@@ -28,9 +22,6 @@ public class AiServiceClientImpl implements IAiServiceClient {
 
     @Value("${ai-service.stream-endpoint:/api/stream}")
     private String streamEndpoint;
-
-    @Value("${ai-service.timeout:10000}")
-    private int timeout;
 
     private final RestTemplate restTemplate;
 
@@ -42,8 +33,26 @@ public class AiServiceClientImpl implements IAiServiceClient {
     public String registerStream(AiServiceStreamRequest request) {
         try {
             String url = aiServiceBaseUrl + streamEndpoint;
-            
+
             log.info("Registering stream with AI service: url={}, stream_id={}", url, request.getStreamId());
+            log.info(
+                    "AI request fields: uri={}, vectorMapUri={}, streamId={}, deviceId={}, deviceName={}, companyId={}, companyName={}, siteId={}, siteName={}, missionId={}, missionName={}, userId={}, userName={}, sessionStartTime={}, emails={}",
+                    request.getUri(),
+                    request.getVectorMapUri(),
+                    request.getStreamId(),
+                    request.getDeviceId(),
+                    request.getDeviceName(),
+                    request.getCompanyId(),
+                    request.getCompanyName(),
+                    request.getSiteId(),
+                    request.getSiteName(),
+                    request.getMissionId(),
+                    request.getMissionName(),
+                    request.getUserId(),
+                    request.getUserName(),
+                    request.getSessionStartTime(),
+                    request.getEmails()
+            );
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -51,20 +60,28 @@ public class AiServiceClientImpl implements IAiServiceClient {
             HttpEntity<AiServiceStreamRequest> entity = new HttpEntity<>(request, headers);
 
             ResponseEntity<AiServiceStreamResponse> response = restTemplate.exchange(
-                url,
-                HttpMethod.POST,
-                entity,
-                AiServiceStreamResponse.class
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    AiServiceStreamResponse.class
             );
 
             AiServiceStreamResponse result = response.getBody();
+
+            log.info("AI register response: statusCode={}, body={}", response.getStatusCode(), result);
+
             if (result != null && "success".equalsIgnoreCase(result.getStatus())) {
-                log.info("Stream registered successfully with AI service: stream_id={}, status: {}, playbackUrl : {}", request.getStreamId(), result.getStatus(), result.getPlaybackUrl());
+                log.info(
+                        "Stream registered successfully with AI service: stream_id={}, status={}, playbackUrl={}",
+                        request.getStreamId(),
+                        result.getStatus(),
+                        result.getPlaybackUrl()
+                );
                 return result.getPlaybackUrl();
-            } else {
-                log.error("Failed to register stream with AI service: {}", result != null ? result.getMessage() : "Unknown error");
-                return "";
             }
+
+            log.error("Failed to register stream with AI service: {}", result != null ? result.getMessage() : "Unknown error");
+            return "";
 
         } catch (Exception e) {
             log.error("Error calling AI service for stream registration", e);
@@ -76,27 +93,27 @@ public class AiServiceClientImpl implements IAiServiceClient {
     public AiServiceStreamResponse unregisterStream(String streamId) {
         try {
             String url = aiServiceBaseUrl + streamEndpoint + "/" + streamId + "/delete";
-            
-            log.info("Unregistering stream from AI service: stream_id={}", streamId);
+
+            log.info("Unregistering stream from AI service: url={}, stream_id={}", url, streamId);
 
             ResponseEntity<AiServiceStreamResponse> response = restTemplate.exchange(
-                url,
-                HttpMethod.POST,
-                null,
-                AiServiceStreamResponse.class
+                    url,
+                    HttpMethod.POST,
+                    null,
+                    AiServiceStreamResponse.class
             );
 
             AiServiceStreamResponse result = response.getBody();
-            log.info("Stream unregistered from AI service: stream_id={}", streamId);
-            
+            log.info("Stream unregistered from AI service: stream_id={}, response={}", streamId, result);
+
             return result;
 
         } catch (Exception e) {
             log.error("Error calling AI service for stream unregistration", e);
             return AiServiceStreamResponse.builder()
-                .state("error")
-                .message("Failed to unregister from AI service: " + e.getMessage())
-                .build();
+                    .state("error")
+                    .message("Failed to unregister from AI service: " + e.getMessage())
+                    .build();
         }
     }
 
@@ -104,22 +121,24 @@ public class AiServiceClientImpl implements IAiServiceClient {
     public AiServiceStreamResponse getStreamInfo(String streamId) {
         try {
             String url = aiServiceBaseUrl + streamEndpoint + "/" + streamId;
-            log.info("Getting stream info from AI service: stream_id={}", streamId);
+
+            log.info("Getting stream info from AI service: url={}, stream_id={}", url, streamId);
+
             ResponseEntity<AiServiceStreamResponse> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                null,
-                AiServiceStreamResponse.class
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    AiServiceStreamResponse.class
             );
+
             AiServiceStreamResponse result = response.getBody();
-            if (result != null) {
-                log.info("Stream info retrieved: stream_id={}, status={}", streamId, result.getStatus());
-                return result;
-            } else {
-                return null;
-            }
+            log.info("Stream info retrieved: stream_id={}, response={}", streamId, result);
+
+            return result;
+
         } catch (Exception e) {
-           return null;
+            log.error("Error getting stream info from AI service: stream_id={}", streamId, e);
+            return null;
         }
     }
 
@@ -127,17 +146,21 @@ public class AiServiceClientImpl implements IAiServiceClient {
     public String getStreamInfoRaw(String streamId) {
         try {
             String url = aiServiceBaseUrl + streamEndpoint + "/" + streamId;
-            log.info("Getting raw stream info from AI service: stream_id={}", streamId);
+
+            log.info("Getting raw stream info from AI service: url={}, stream_id={}", url, streamId);
+
             ResponseEntity<String> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                null,
-                String.class
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    String.class
             );
-            log.info("Stream {} info : {} ", streamId, response.getBody());
+
+            log.info("Raw stream info retrieved: stream_id={}, body={}", streamId, response.getBody());
             return response.getBody();
+
         } catch (Exception e) {
-            log.error("Error getting raw stream info from AI service", e);
+            log.error("Error getting raw stream info from AI service: stream_id={}", streamId, e);
             return null;
         }
     }

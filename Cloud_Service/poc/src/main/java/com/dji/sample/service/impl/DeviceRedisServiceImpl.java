@@ -57,6 +57,13 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
         redisTemplate.delete("robot:" + deviceSn + ":status");
         redisTemplate.delete("robot:" + deviceSn + ":missionId");
     }
+    @Override
+    public void clearDeviceStatus(String deviceSn) {
+        redisTemplate.delete("status:" + deviceSn);
+        redisTemplate.delete("robot:" + deviceSn + ":status");
+    }
+
+
 
     @Override
     public void setRobotJobState(

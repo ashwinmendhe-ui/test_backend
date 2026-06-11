@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-
+import java.util.List;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -26,6 +26,9 @@ import com.dji.sample.service.IAiServiceClient;
 import org.springframework.beans.factory.annotation.Value;
 import com.dji.sample.dto.request.CreateHistoryRequest;
 import com.dji.sample.service.HistoryService;
+import com.dji.sample.robot.service.IRobotCommandService;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +40,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final HistoryService historyService;
    
         private final IAiServiceClient aiServiceClient;
+        private final IRobotCommandService robotCommandService;
 
         @Value("${ai-service.rtmp-url}")
         private String rtmpBaseUrl;
@@ -72,7 +76,9 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         LiveStreamSession session = new LiveStreamSession();
 
         session.setDeviceSn(request.getDeviceSn());
-        session.setUserId(getCurrentUserId());
+       UUID currentUserId = getCurrentUserId();
+        session.setUserId(currentUserId);
+        session.setUserId(currentUserId);
         session.setSessionStatus("ACTIVE");
         session.setQuality(
                 request.getVideoQuality() != null
@@ -98,17 +104,53 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         String rtmpUrl = rtmpBaseUrl + "/streams/" + request.getDeviceSn();
         String vectorMapUrl = rtmpBaseUrl + "/streams/" + request.getDeviceSn() + "-vector";
 
+
+        if ("Robot".equalsIgnoreCase(device.getDeviceType())) {
+                String jobId = UUID.randomUUID().toString();
+
+                Map<String, Object> parameters = new HashMap<>();
+                parameters.put("camera_stream", rtmpUrl);
+                parameters.put("vector_map_stream", vectorMapUrl);
+                parameters.put("patrol_route", "TestforGO2");
+
+                Map<String, Object> robotJobPayload = new HashMap<>();
+                robotJobPayload.put("job_type", "robopilot_test/patrol_test");
+                robotJobPayload.put("parameters", parameters);
+                robotCommandService.createJob(
+                        request.getDeviceSn(),
+                        UUID.randomUUID().toString(),
+                        jobId,
+                        robotJobPayload
+                );
+                }
+
+        // UUID currentUserId = getCurrentUserId();
+
         AiServiceStreamRequest aiRequest = AiServiceStreamRequest.builder()
                 .uri(rtmpUrl)
                 .vectorMapUri(vectorMapUrl)
                 .streamId(request.getDeviceSn())
+
                 .deviceId(device.getDeviceId())
-                .deviceName(device.getDeviceName())
+                .deviceName(device.getDeviceName() != null ? device.getDeviceName() : "")
+
                 .companyId(device.getCompany() != null ? device.getCompany().getCompanyId() : null)
-                .companyName(device.getCompany() != null ? device.getCompany().getName() : null)
+                .companyName(device.getCompany() != null && device.getCompany().getName() != null
+                        ? device.getCompany().getName()
+                        : "")
+
                 .siteId(device.getSite() != null ? device.getSite().getSiteId() : null)
-                .siteName(device.getSite() != null ? device.getSite().getName() : null)
+                .siteName(device.getSite() != null && device.getSite().getName() != null
+                        ? device.getSite().getName()
+                        : "")
+
                 .missionId(request.getMissionId())
+                .missionName(request.getMissionId() != null ? request.getMissionId().toString() : "")
+
+                .userId(currentUserId)
+                .userName("admin")
+                .emails(List.of())
+
                 .sessionStartTime(session.getStartedAt())
                 .build();
 
@@ -188,7 +230,12 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         
         device.setMissionId(null);
         deviceRepository.save(device);
+
+        // clear stream/job running state from Redis after stop
         deviceRedisService.clearRobotJobState(request.getDeviceSn());
+
+        // also clear old Redis status key if used by dashboard/device status
+        deviceRedisService.clearDeviceStatus(request.getDeviceSn());
         CreateHistoryRequest historyRequest = new CreateHistoryRequest();
         historyRequest.setDeviceSn(saved.getDeviceSn());
         historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
@@ -198,6 +245,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
 
         return mapToResponse(saved);
         }
+       
         @Override
         public StreamInfoResponse getStreamInfo(String streamId) {
 

@@ -35,6 +35,12 @@ public class LocalMqttConfig {
     @Value("${mqtt.inbound-topic:sys/product/+/status}")
     private String inboundTopic;
 
+    @Value("${mqtt.username:}")
+    private String username;
+
+    @Value("${mqtt.password:}")
+    private String password;
+
     @Bean
     public MqttPahoClientFactory localMqttClientFactory() {
         MqttConnectOptions options = new MqttConnectOptions();
@@ -43,11 +49,18 @@ public class LocalMqttConfig {
         options.setCleanSession(true);
         options.setKeepAliveInterval(10);
 
+        if (username != null && !username.isBlank()) {
+            options.setUserName(username);
+        }
+
+        if (password != null && !password.isBlank()) {
+            options.setPassword(password.toCharArray());
+        }
+
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
         factory.setConnectionOptions(options);
         return factory;
     }
-
     @Bean
     public MessageChannel deviceStatusMqttInputChannel() {
         return new DirectChannel();
@@ -96,6 +109,9 @@ public class LocalMqttConfig {
 
     @PostConstruct
     public void init() {
+        System.out.println("MQTT host = " + host + ":" + port);
+        System.out.println("MQTT clientId = " + clientId);
+        System.out.println("MQTT username = " + username);
         System.out.println("MQTT inbound topics = " + inboundTopic);
     }
 }
