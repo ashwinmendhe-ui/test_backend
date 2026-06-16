@@ -16,7 +16,7 @@ import com.dji.sample.robot.handler.RobotHealthHandler;
 import com.dji.sample.robot.handler.RobotJobStateHandler;
 import com.dji.sample.robot.handler.RobotTelemetryHandler;
 
-@Service
+// @Service
 @RequiredArgsConstructor
 @Slf4j
 public class LocalMqttDeviceStatusListener {

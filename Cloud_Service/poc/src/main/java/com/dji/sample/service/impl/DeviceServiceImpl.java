@@ -92,7 +92,7 @@ public class DeviceServiceImpl implements DeviceService {
                 .model(request.getModel())
                 .deviceSn(deviceSn)
                 .description(request.getDescription())
-                .status("INACTIVE")
+                .status("inactive")
                 .company(company)
                 .site(site)
                 .domain(null)
@@ -143,7 +143,7 @@ public class DeviceServiceImpl implements DeviceService {
                 .orElseThrow(() -> new RuntimeException("Device not found"));
 
         device.setDeletedAt(OffsetDateTime.now());
-        device.setStatus("INACTIVE");
+        device.setStatus("inactive");
 
         deviceRepository.save(device);
     }

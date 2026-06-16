@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import java.time.Duration;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -39,19 +41,42 @@ public class RobotJobStateHandler {
             String prodStatusKey = "status:" + deviceSn;
             String missionKey = "robot:" + deviceSn + ":missionId";
 
-            if (jobId != null) {
-                stringRedisTemplate.opsForValue().set(jobKey, jobId);
-            }
+            Set<String> terminalStates = Set.of(
+                    "COMPLETED",
+                    "COMPLETE",
+                    "FAILED",
+                    "CANCELLED",
+                    "CANCELED",
+                    "STOPPED",
+                    "IDLE"
+            );
 
-            if (status != null) {
-                stringRedisTemplate.opsForValue().set(localStatusKey, status);
-                stringRedisTemplate.opsForValue().set(prodStatusKey, status);
-            }
+            if (status != null && terminalStates.contains(status.toUpperCase())) {
 
-            if (missionId != null) {
-                stringRedisTemplate.opsForValue().set(missionKey, missionId);
-            }
+                stringRedisTemplate.delete(jobKey);
+                stringRedisTemplate.delete(localStatusKey);
+                stringRedisTemplate.delete(prodStatusKey);
+                stringRedisTemplate.delete(missionKey);
 
+                log.info("Robot job cleared. deviceSn={}, status={}", deviceSn, status);
+
+            } else {
+
+                Duration ttl = Duration.ofMinutes(10);
+
+                if (jobId != null) {
+                    stringRedisTemplate.opsForValue().set(jobKey, jobId, ttl);
+                }
+
+                if (status != null) {
+                    stringRedisTemplate.opsForValue().set(localStatusKey, status, ttl);
+                    stringRedisTemplate.opsForValue().set(prodStatusKey, status, ttl);
+                }
+
+                if (missionId != null) {
+                    stringRedisTemplate.opsForValue().set(missionKey, missionId, ttl);
+                }
+            }
             webSocketPublisher.publishStatus(deviceSn, jobState);
 
             log.info("Robot job state received. deviceSn={}, jobId={}, status={}, missionId={}, message={}",

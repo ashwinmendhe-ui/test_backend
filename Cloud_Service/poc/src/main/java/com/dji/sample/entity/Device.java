@@ -86,7 +86,7 @@ public class Device {
         }
 
         if (status == null || status.isBlank()) {
-            status = "INACTIVE";
+            status = "inactive";
         }
     }
 }

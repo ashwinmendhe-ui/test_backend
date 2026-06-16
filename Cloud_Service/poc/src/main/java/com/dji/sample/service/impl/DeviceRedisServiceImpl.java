@@ -45,6 +45,31 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
         );
     }
 
+
+    @Override
+    public void setDeviceOnlineBySn(String deviceSn) {
+        String key = RedisConst.DEVICE_ONLINE_PREFIX + deviceSn;
+
+        redisTemplate.opsForValue().set(
+                key,
+                deviceSn,
+                deviceAliveSecond,
+                TimeUnit.SECONDS
+        );
+    }
+
+    @Override
+    public void setDeviceStatus(String deviceSn, String status) {
+        stringRedisTemplate.opsForValue()
+                .set("robot:" + deviceSn + ":status", status);
+    }
+
+    @Override
+    public void setDeviceTelemetry(String deviceSn, String telemetryJson) {
+        stringRedisTemplate.opsForValue()
+                .set("robot:" + deviceSn + ":telemetry", telemetryJson);
+    }
+
     @Override
     public String getRobotTelemetry(String deviceSn) {
         return stringRedisTemplate.opsForValue()

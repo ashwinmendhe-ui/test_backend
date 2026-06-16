@@ -6,17 +6,23 @@ public interface IDeviceRedisService {
 
     Boolean checkDeviceOnline(String sn);
 
-    Boolean delDeviceOnline(String sn);
+    Boolean delDeviceOnline(String sn); 
 
     void setDeviceOnline(Device device);
+
+    void setDeviceOnlineBySn(String deviceSn);
 
     Device getDeviceOnline(String sn);
 
     String getRobotTelemetry(String deviceSn);
 
+    void setDeviceStatus(String deviceSn, String status);
+
+    void setDeviceTelemetry(String deviceSn, String telemetryJson);
+
     void clearRobotJobState(String deviceSn);
 
-    void clearDeviceStatus(String deviceSn);   // <-- add this
+    void clearDeviceStatus(String deviceSn);
 
     void setRobotJobState(
             String deviceSn,

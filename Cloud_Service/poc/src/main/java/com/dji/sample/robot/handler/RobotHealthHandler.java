@@ -24,12 +24,12 @@ public class RobotHealthHandler {
             JsonNode root = objectMapper.readTree(payload);
             JsonNode data = root.path("data");
 
-            boolean online = data.path("online").asBoolean(false);
+            boolean online = data.path("online").asBoolean(true);
 
             String onlineKey = "online:" + deviceSn;
 
             if (online) {
-                redisTemplate.opsForValue().set(onlineKey, "1", Duration.ofSeconds(60));
+                redisTemplate.opsForValue().set(onlineKey, "1", Duration.ofSeconds(120));
                 log.info("Robot health updated ONLINE. deviceSn={}", deviceSn);
             } else {
                 redisTemplate.delete(onlineKey);
@@ -64,7 +64,7 @@ public class RobotHealthHandler {
             redisTemplate.opsForValue().set(
                     "robot:" + deviceSn + ":telemetry",
                     objectMapper.writeValueAsString(telemetry),
-                    Duration.ofSeconds(60)
+                    Duration.ofSeconds(120)
             );
 
             log.info("Robot telemetry saved from health. deviceSn={}", deviceSn);

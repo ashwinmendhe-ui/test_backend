@@ -65,8 +65,12 @@ mqtt:
   client-id: dhive-local-backend-go2-test
   username: cloud-server
   password: QAZ1357okm24
-  inbound-topic: sys/product/+/status,robot/+/health,robot/+/response,robot/+/job/state,robot/+/state,robot/+/telemetry
-  # inbound-topic: robot/+/health,robot/+/state
+  inbound-topic: sys/product/+/status,thing/product/+/osd,thing/product/+/state,thing/product/+/services_reply,robot/+/health,robot/+/response,robot/+/job/state,robot/+/state,robot/+/telemetry
+
+cloud-sdk:
+  mqtt:
+    inbound-topic: sys/product/+/status,thing/product/+/osd,thing/product/+/state,thing/product/+/services_reply,robot/+/health,robot/+/response,robot/+/job/state,robot/+/state,robot/+/telemetry
+
 
 ai-service:
   base-url: http://localhost:7879
