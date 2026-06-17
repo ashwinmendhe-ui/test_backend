@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.dji.sample.robot.service.RobotWebSocketPublisher;
 
 @Slf4j
 @Service
@@ -44,6 +45,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final IAiServiceClient aiServiceClient;
     private final IRobotCommandService robotCommandService;
     private final DjiLivestreamService djiLivestreamService;
+    private final RobotWebSocketPublisher webSocketPublisher;
 
     @Value("${ai-service.rtmp-url}")
     private String rtmpBaseUrl;
@@ -184,6 +186,12 @@ public class LiveStreamServiceImpl implements LiveStreamService {
             );
         }
 
+        webSocketPublisher.publishDashboardStatus(
+                request.getDeviceSn(),
+                "WORKING",
+                "stream-start"
+        );
+
         return StartStreamResponse.builder()
                 .sessionId(saved.getId())
                 .streamId(saved.getId())
@@ -233,12 +241,10 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         deviceRedisService.clearRobotJobState(request.getDeviceSn());
         deviceRedisService.clearDeviceStatus(request.getDeviceSn());
 
-        CreateHistoryRequest historyRequest = new CreateHistoryRequest();
-        historyRequest.setDeviceSn(saved.getDeviceSn());
-        historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
-        historyRequest.setMissionId(saved.getMissionId());
-
-        historyService.createHistory(historyRequest);
+       webSocketPublisher.publishDashboardRefresh(
+                request.getDeviceSn(),
+                "stream-stop"
+        );
 
         return mapToResponse(saved);
     }

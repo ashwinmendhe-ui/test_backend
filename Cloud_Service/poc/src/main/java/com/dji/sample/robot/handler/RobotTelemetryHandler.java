@@ -25,6 +25,7 @@ public class RobotTelemetryHandler {
             redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(data));
 
             webSocketPublisher.publishTelemetry(deviceSn, data);
+            webSocketPublisher.publishDashboardRefresh(deviceSn, "robot-telemetry");
 
             log.info("Telemetry stored and pushed. deviceSn={}, key={}, data={}", deviceSn, key, data);
 

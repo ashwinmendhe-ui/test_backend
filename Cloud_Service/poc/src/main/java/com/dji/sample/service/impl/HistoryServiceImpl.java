@@ -6,6 +6,7 @@ import com.dji.sample.entity.*;
 import com.dji.sample.repository.*;
 import com.dji.sample.service.HistoryService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -22,7 +23,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 
-
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class HistoryServiceImpl implements HistoryService {
@@ -58,7 +59,20 @@ public class HistoryServiceImpl implements HistoryService {
 
         String deviceName = device != null ? device.getDeviceName() : history.getDeviceSn();
         String userName = resolveUserName(user);
+        String metadataUrl = resolveMetadataUrl(history.getPlaybackUrl());
 
+        Map<String, Integer> labelCounts = loadLabelCounts(metadataUrl);
+        List<BookmarkResponse> bookmarks = loadBookmarks(metadataUrl);
+
+        int calculatedTotalRecognition = !labelCounts.isEmpty()
+                ? labelCounts.values().stream().mapToInt(Integer::intValue).sum()
+                : bookmarks.size();
+
+        if ((history.getTotalRecognition() == null || history.getTotalRecognition() == 0)
+                && calculatedTotalRecognition > 0) {
+            history.setTotalRecognition(calculatedTotalRecognition);
+            reportHistoryRepository.save(history);
+        }
         return HistoryDetailResponse.builder()
                 .deviceSn(history.getDeviceSn())
                 .siteName(site != null ? site.getName() : "")
@@ -73,13 +87,13 @@ public class HistoryServiceImpl implements HistoryService {
                 .startTime(format(history.getStartTime()))
                 .endTime(format(history.getEndTime()))
                 .totalTime(history.getTotalTime())
-                .totalRecognition(history.getTotalRecognition())
+                .totalRecognition(calculatedTotalRecognition)
                 .duration(history.getTotalTime())
                 .distance("")
                 .playbackUrl(history.getPlaybackUrl())
                 .reportCreatedAt(format(history.getEndTime() != null ? history.getEndTime() : history.getStartTime()))
-                .labelCounts(loadLabelCounts(history.getPlaybackUrl()))
-                .bookmarks(loadBookmarks(history.getPlaybackUrl()))
+                .labelCounts(labelCounts)
+                .bookmarks(bookmarks)
                 .build();
     }
 
@@ -196,7 +210,7 @@ public class HistoryServiceImpl implements HistoryService {
                 ? session.getStoppedAt()
                 : OffsetDateTime.now();
 
-        Map<String, Integer> labelCounts = loadLabelCounts(request.getPlaybackUrl());
+        Map<String, Integer> labelCounts = loadLabelCounts(resolveMetadataUrl(request.getPlaybackUrl()));
         int totalRecognition = labelCounts.values().stream().mapToInt(Integer::intValue).sum();
 
         ReportHistory history = ReportHistory.builder()
@@ -234,8 +248,7 @@ public class HistoryServiceImpl implements HistoryService {
             return null;
         }
 
-        return parts[0] + "/" + parts[1];
-    }
+        return "streams/" + parts[0] + "/" + parts[1];    }
 
     private Map<String, Integer> loadLabels(String playbackUrl) {
         try {
@@ -243,6 +256,7 @@ public class HistoryServiceImpl implements HistoryService {
             if (folderPath == null) return Collections.emptyMap();
 
             String objectKey = folderPath + "/info.json";
+            
 
             try (InputStream is = s3PresignService.getStreamObject(objectKey)) {
                 JsonNode root = objectMapper.readTree(is);
@@ -260,8 +274,9 @@ public class HistoryServiceImpl implements HistoryService {
                 return labels;
             }
         } catch (Exception e) {
-            return Collections.emptyMap();
-        }
+
+    return Collections.emptyMap();
+}
     }
 
     private List<BookmarkRaw> loadBookmarkRaw(String playbackUrl) {
@@ -271,6 +286,7 @@ public class HistoryServiceImpl implements HistoryService {
 
             String objectKey = folderPath + "/bookmark.ndjson";
             List<BookmarkRaw> result = new ArrayList<>();
+            
 
             try (InputStream is = s3PresignService.getStreamObject(objectKey);
                 BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
@@ -298,8 +314,9 @@ public class HistoryServiceImpl implements HistoryService {
 
             return result;
         } catch (Exception e) {
-            return Collections.emptyList();
-        }
+    log.warn("[History] Failed to load bookmark.ndjson for playbackUrl={}", playbackUrl, e);
+    return Collections.emptyList();
+}
     }
 
     private Map<String, Integer> loadLabelCounts(String playbackUrl) {
@@ -348,6 +365,38 @@ public class HistoryServiceImpl implements HistoryService {
         return responses;
     }
 
+    private String resolveMetadataUrl(String playbackUrl) {
+            if (playbackUrl == null || playbackUrl.isBlank()) {
+                return playbackUrl;
+            }
+
+            if (playbackUrl.contains("/streams/")) {
+                return playbackUrl;
+            }
+
+            String marker = "/live/hls/";
+            int idx = playbackUrl.indexOf(marker);
+            if (idx < 0) {
+                return playbackUrl;
+            }
+
+            String after = playbackUrl.substring(idx + marker.length());
+            String sessionIdText = after.split("/")[0];
+
+            try {
+                UUID sessionId = UUID.fromString(sessionIdText);
+
+                String resolvedUrl = liveStreamSessionRepository.findById(sessionId)
+                        .map(LiveStreamSession::getPlaybackUrl)
+                        .filter(url -> url != null && !url.isBlank())
+                        .orElse(playbackUrl);
+                return resolvedUrl;
+
+            } catch (Exception e) {
+                log.warn("[History] Failed to resolve metadata url from playbackUrl={}", playbackUrl, e);
+                return playbackUrl;
+            }
+        }
     private static class BookmarkRaw {
         List<Integer> labelIds;
         Long offset;

@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -58,16 +59,29 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
         );
     }
 
+
+    @Override
+    public void setDeviceOnlineBySn(String deviceSn, long ttlSeconds) {
+        String key = RedisConst.DEVICE_ONLINE_PREFIX + deviceSn;
+
+        redisTemplate.opsForValue().set(
+                key,
+                deviceSn,
+                ttlSeconds,
+                TimeUnit.SECONDS
+        );
+    }
+
     @Override
     public void setDeviceStatus(String deviceSn, String status) {
         stringRedisTemplate.opsForValue()
-                .set("robot:" + deviceSn + ":status", status);
+                .set("robot:" + deviceSn + ":status", status, 120, TimeUnit.SECONDS);
     }
 
     @Override
     public void setDeviceTelemetry(String deviceSn, String telemetryJson) {
         stringRedisTemplate.opsForValue()
-                .set("robot:" + deviceSn + ":telemetry", telemetryJson);
+                .set("robot:" + deviceSn + ":telemetry", telemetryJson, 120, TimeUnit.SECONDS);
     }
 
     @Override
@@ -101,6 +115,27 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
         stringRedisTemplate.opsForValue().set("robot:" + deviceSn + ":status", status);
         stringRedisTemplate.opsForValue().set("robot:" + deviceSn + ":missionId", missionId);
     }
+
+
+
+    @Override
+    public void clearAllRobotJobState() {
+        Set<String> jobKeys = stringRedisTemplate.keys("robot:*:jobId");
+
+        if (jobKeys == null || jobKeys.isEmpty()) {
+            return;
+        }
+
+        for (String jobKey : jobKeys) {
+            String deviceSn = jobKey
+                    .replace("robot:", "")
+                    .replace(":jobId", "");
+
+            clearRobotJobState(deviceSn);
+        }
+    }
+
+
 
     @Override
     public Device getDeviceOnline(String sn) {

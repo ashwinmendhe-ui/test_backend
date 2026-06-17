@@ -304,19 +304,13 @@ public class DeviceServiceImpl implements DeviceService {
 
         String responseStatus = "offline";
 
+
         if (device.getDeviceSn() != null
                 && deviceRedisService.getDeviceOnline(device.getDeviceSn()) != null) {
 
-            String robotStatus = stringRedisTemplate.opsForValue()
-                    .get("robot:" + device.getDeviceSn() + ":status");
-
-            if ("WORKING".equalsIgnoreCase(robotStatus)
-                    || "RUNNING".equalsIgnoreCase(robotStatus)
-                    || "PENDING".equalsIgnoreCase(robotStatus)) {
-                responseStatus = "working";
-            } else {
-                responseStatus = "online";
-            }
+            responseStatus = hasActiveStream
+                    ? "working"
+                    : "online";
         }
 
 

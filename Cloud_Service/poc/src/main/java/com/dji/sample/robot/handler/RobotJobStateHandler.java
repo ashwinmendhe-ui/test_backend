@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.Set;
+import com.dji.sample.repository.LiveStreamSessionRepository;
 
 @Slf4j
 @Component
@@ -19,6 +20,7 @@ public class RobotJobStateHandler {
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final RobotWebSocketPublisher webSocketPublisher;
+    private final LiveStreamSessionRepository liveStreamSessionRepository;
 
     public void handle(String deviceSn, String payload) {
         try {
@@ -62,6 +64,22 @@ public class RobotJobStateHandler {
 
             } else {
 
+
+                boolean hasActiveSession = liveStreamSessionRepository
+                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(deviceSn, "ACTIVE")
+                        .isPresent();
+
+                if (!hasActiveSession) {
+                    stringRedisTemplate.delete(jobKey);
+                    stringRedisTemplate.delete(localStatusKey);
+                    stringRedisTemplate.delete(prodStatusKey);
+                    stringRedisTemplate.delete(missionKey);
+
+                    log.warn("Ignoring stale robot job state because no ACTIVE session exists. deviceSn={}, jobId={}, status={}",
+                            deviceSn, jobId, status);
+                    return;
+                }
+
                 Duration ttl = Duration.ofMinutes(10);
 
                 if (jobId != null) {
@@ -78,6 +96,7 @@ public class RobotJobStateHandler {
                 }
             }
             webSocketPublisher.publishStatus(deviceSn, jobState);
+            webSocketPublisher.publishDashboardStatus(deviceSn, status, "robot-job-state");
 
             log.info("Robot job state received. deviceSn={}, jobId={}, status={}, missionId={}, message={}",
                     deviceSn, jobId, status, missionId, message);

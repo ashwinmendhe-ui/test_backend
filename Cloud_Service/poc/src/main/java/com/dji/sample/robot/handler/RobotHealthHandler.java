@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import com.dji.sample.robot.service.RobotWebSocketPublisher;
 
 @Slf4j
 @Component
@@ -18,6 +19,7 @@ public class RobotHealthHandler {
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final RobotWebSocketPublisher webSocketPublisher;
 
     public void handle(String deviceSn, String payload) {
         try {
@@ -35,6 +37,7 @@ public class RobotHealthHandler {
                 redisTemplate.delete(onlineKey);
                 redisTemplate.delete("robot:" + deviceSn + ":telemetry");
                 log.info("Robot health updated OFFLINE. deviceSn={}", deviceSn);
+                webSocketPublisher.publishDashboardStatus(deviceSn, "OFFLINE", "robot-health");
                 return;
             }
 
@@ -68,6 +71,7 @@ public class RobotHealthHandler {
             );
 
             log.info("Robot telemetry saved from health. deviceSn={}", deviceSn);
+            webSocketPublisher.publishDashboardRefresh(deviceSn, "robot-health");
 
         } catch (Exception e) {
             log.error("Failed to handle robot health. deviceSn={}, payload={}", deviceSn, payload, e);

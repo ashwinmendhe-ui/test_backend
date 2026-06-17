@@ -136,7 +136,7 @@ public class LocalMqttMessageHandler {
 
         String telemetryJson = objectMapper.writeValueAsString(telemetry);
 
-        deviceRedisService.setDeviceOnlineBySn(deviceSn);
+        deviceRedisService.setDeviceOnlineBySn(deviceSn, 120);
         deviceRedisService.setDeviceStatus(deviceSn, "online");
         deviceRedisService.setDeviceTelemetry(deviceSn, telemetryJson);
 
