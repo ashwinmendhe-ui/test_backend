@@ -1,4 +1,4 @@
-package com.dji.sample.robot.service;
+package com.dji.sample.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +12,7 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class RobotWebSocketPublisher {
+public class DeviceWebSocketPublisher {
 
     private final SimpMessagingTemplate messagingTemplate;
 

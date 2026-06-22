@@ -23,6 +23,7 @@ import java.util.Map;
 import com.dji.sdk.mqtt.services.ServicesReplyHandler;
 import org.springframework.messaging.support.MessageBuilder;
 import java.nio.charset.StandardCharsets;
+import com.dji.sample.service.DeviceWebSocketPublisher;
 
 @Slf4j
 @Component
@@ -37,6 +38,7 @@ public class LocalMqttMessageHandler {
     private final DeviceRepository deviceRepository;
     private final IDeviceRedisService deviceRedisService;
     private final ServicesReplyHandler servicesReplyHandler;
+    private final DeviceWebSocketPublisher webSocketPublisher;
 
     @ServiceActivator(inputChannel = LocalMqttConfig.DEVICE_STATUS_CHANNEL)
     public void handle(Message<?> message) {
@@ -140,6 +142,9 @@ public class LocalMqttMessageHandler {
         deviceRedisService.setDeviceStatus(deviceSn, "online");
         deviceRedisService.setDeviceTelemetry(deviceSn, telemetryJson);
 
+        webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-osd");
+        log.info("[MQTT][DJI][OSD][WS] Dashboard refresh published. deviceSn={}", deviceSn);
+
         log.info("[MQTT][DJI][OSD] Drone telemetry updated. deviceSn={}, sourceDeviceSn={}", deviceSn, topicDeviceSn);
     }
 
@@ -180,9 +185,15 @@ public class LocalMqttMessageHandler {
         if (online) {
             deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn)
                     .ifPresent(deviceRedisService::setDeviceOnline);
+
+            webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-status");
+
             log.info("[MQTT][DJI] Device online: {}", deviceSn);
         } else {
             deviceRedisService.delDeviceOnline(deviceSn);
+
+            webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-status");
+
             log.info("[MQTT][DJI] Device offline: {}", deviceSn);
         }
     }

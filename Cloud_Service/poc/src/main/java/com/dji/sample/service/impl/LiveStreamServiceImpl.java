@@ -31,7 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.dji.sample.robot.service.RobotWebSocketPublisher;
+import com.dji.sample.service.DeviceWebSocketPublisher;
 
 @Slf4j
 @Service
@@ -45,7 +45,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final IAiServiceClient aiServiceClient;
     private final IRobotCommandService robotCommandService;
     private final DjiLivestreamService djiLivestreamService;
-    private final RobotWebSocketPublisher webSocketPublisher;
+    private final DeviceWebSocketPublisher webSocketPublisher;
 
     @Value("${ai-service.rtmp-url}")
     private String rtmpBaseUrl;

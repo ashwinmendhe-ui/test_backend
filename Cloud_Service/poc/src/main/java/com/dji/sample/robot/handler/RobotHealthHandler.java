@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import com.dji.sample.robot.service.RobotWebSocketPublisher;
+import com.dji.sample.service.DeviceWebSocketPublisher;
 
 @Slf4j
 @Component
@@ -19,7 +19,7 @@ public class RobotHealthHandler {
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
-    private final RobotWebSocketPublisher webSocketPublisher;
+    private final DeviceWebSocketPublisher webSocketPublisher;
 
     public void handle(String deviceSn, String payload) {
         try {

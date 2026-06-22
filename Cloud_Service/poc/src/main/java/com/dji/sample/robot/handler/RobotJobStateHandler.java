@@ -1,7 +1,7 @@
 package com.dji.sample.robot.handler;
 
 import com.dji.sample.robot.entity.RobotJobStateData;
-import com.dji.sample.robot.service.RobotWebSocketPublisher;
+import com.dji.sample.service.DeviceWebSocketPublisher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ public class RobotJobStateHandler {
 
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
-    private final RobotWebSocketPublisher webSocketPublisher;
+    private final DeviceWebSocketPublisher webSocketPublisher;
     private final LiveStreamSessionRepository liveStreamSessionRepository;
 
     public void handle(String deviceSn, String payload) {

@@ -1,7 +1,7 @@
 package com.dji.sample.robot.handler;
 
 import com.dji.sample.robot.entity.RobotTelemetryData;
-import com.dji.sample.robot.service.RobotWebSocketPublisher;
+import com.dji.sample.service.DeviceWebSocketPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +15,7 @@ public class RobotTelemetryHandler {
 
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate redisTemplate;
-    private final RobotWebSocketPublisher webSocketPublisher;
+    private final DeviceWebSocketPublisher webSocketPublisher;
 
     public void handle(String deviceSn, String payload) {
         try {
