@@ -2,7 +2,6 @@ package com.dji.sample.service.impl;
 
 import com.dji.sample.drone.service.DjiLivestreamService;
 import com.dji.sample.dto.request.AiServiceStreamRequest;
-import com.dji.sample.dto.request.CreateHistoryRequest;
 import com.dji.sample.dto.request.StartStreamRequest;
 import com.dji.sample.dto.request.StopStreamRequest;
 import com.dji.sample.dto.response.StartStreamResponse;
@@ -32,6 +31,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.dji.sample.service.DeviceWebSocketPublisher;
+import com.dji.sample.service.SlackNotificationService;
+import com.dji.sample.dto.request.CreateHistoryRequest;
+import com.dji.sample.dto.response.HistoryDetailResponse;
 
 @Slf4j
 @Service
@@ -46,6 +48,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final IRobotCommandService robotCommandService;
     private final DjiLivestreamService djiLivestreamService;
     private final DeviceWebSocketPublisher webSocketPublisher;
+    private final SlackNotificationService slackNotificationService;
 
     @Value("${ai-service.rtmp-url}")
     private String rtmpBaseUrl;
@@ -173,6 +176,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
 
         String hlsUrl = buildBackendHlsUrl(saved.getId());
+        // slackNotificationService.notifyStreamStarted(device, saved, hlsUrl);
 
         device.setMissionId(request.getMissionId());
         deviceRepository.save(device);
@@ -231,6 +235,27 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         session.setStoppedAt(now);
 
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
+
+        try {
+                CreateHistoryRequest historyRequest = new CreateHistoryRequest();
+                historyRequest.setDeviceSn(saved.getDeviceSn());
+                historyRequest.setMissionId(saved.getMissionId());
+                historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
+
+                HistoryDetailResponse report = historyService.createHistory(historyRequest);
+
+                slackNotificationService.notifyAiDetectionReport(report);
+
+                } catch (Exception e) {
+                log.warn(
+                        "[History/Slack] Failed to create history or send report. deviceSn={}, error={}",
+                        saved.getDeviceSn(),
+                        e.getMessage(),
+                        e
+                );
+        }
+
+
 
         Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
                 .orElseThrow(() -> new RuntimeException("Device not found"));

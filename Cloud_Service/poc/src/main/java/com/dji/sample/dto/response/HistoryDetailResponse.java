@@ -37,4 +37,5 @@ public class HistoryDetailResponse {
 
     private Map<String, Integer> labelCounts;
     private List<BookmarkResponse> bookmarks;
+    private String companyName;
 }

@@ -27,4 +27,5 @@ public interface UserRepository extends JpaRepository<User, Integer> {
             String username,
             String email
     );
+    List<User> findByCompanyIdAndIsActiveTrueAndDeletedAtIsNull(UUID companyId);
 }

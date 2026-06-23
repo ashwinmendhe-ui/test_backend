@@ -56,7 +56,7 @@ public class HistoryServiceImpl implements HistoryService {
         Mission mission = findMission(history.getMissionId());
         Device device = findDevice(history.getDeviceSn());
         User user = findUser(history.getUserId());
-
+        Company company = findCompany(history.getCompanyId());
         String deviceName = device != null ? device.getDeviceName() : history.getDeviceSn();
         String userName = resolveUserName(user);
         String metadataUrl = resolveMetadataUrl(history.getPlaybackUrl());
@@ -73,28 +73,35 @@ public class HistoryServiceImpl implements HistoryService {
             history.setTotalRecognition(calculatedTotalRecognition);
             reportHistoryRepository.save(history);
         }
-        return HistoryDetailResponse.builder()
-                .deviceSn(history.getDeviceSn())
-                .siteName(site != null ? site.getName() : "")
-                .deviceName(deviceName)
-                .companyId(history.getCompanyId())
-                .siteId(history.getSiteId())
-                .missionId(history.getMissionId())
-                .robotName(deviceName)
-                .missionName(mission != null ? mission.getMissionName() : "")
-                .userName(userName)
-                .workerName(userName)
-                .startTime(format(history.getStartTime()))
-                .endTime(format(history.getEndTime()))
-                .totalTime(history.getTotalTime())
-                .totalRecognition(calculatedTotalRecognition)
-                .duration(history.getTotalTime())
-                .distance("")
-                .playbackUrl(history.getPlaybackUrl())
-                .reportCreatedAt(format(history.getEndTime() != null ? history.getEndTime() : history.getStartTime()))
-                .labelCounts(labelCounts)
-                .bookmarks(bookmarks)
-                .build();
+            return HistoryDetailResponse.builder()
+            .deviceSn(history.getDeviceSn())
+            .siteName(site != null ? site.getName() : "")
+            .deviceName(deviceName)
+            .companyId(history.getCompanyId())
+            .companyName(company != null ? company.getName() : "")
+            .siteId(history.getSiteId())
+            .missionId(history.getMissionId())
+            .robotName(deviceName)
+            .missionName(mission != null ? mission.getMissionName() : "")
+            .userName(userName)
+            .workerName(userName)
+            .startTime(format(history.getStartTime()))
+            .endTime(format(history.getEndTime()))
+            .totalTime(history.getTotalTime())
+            .totalRecognition(calculatedTotalRecognition)
+            .duration(history.getTotalTime())
+            .distance("")
+            .playbackUrl(history.getPlaybackUrl())
+            .reportCreatedAt(
+                    format(
+                            history.getEndTime() != null
+                                    ? history.getEndTime()
+                                    : history.getStartTime()
+                    )
+            )
+            .labelCounts(labelCounts)
+            .bookmarks(bookmarks)
+            .build();
     }
 
     private HistoryListResponse toListResponse(ReportHistory history) {

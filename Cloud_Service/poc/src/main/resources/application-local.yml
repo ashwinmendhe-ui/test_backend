@@ -78,3 +78,7 @@ ai-service:
   timeout: 10000
   # rtmp-url: rtmp://10.17.14.101:1935
   rtmp-url: rtmp://43.202.9.216:1935
+
+slack:
+  enabled: ${SLACK_ENABLED:false}
+  bot-token: ${SLACK_BOT_TOKEN:}
