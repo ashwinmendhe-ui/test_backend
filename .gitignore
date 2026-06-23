@@ -30,4 +30,4 @@ surefire-reports/
 Test.md
 
 ## Config files
-application-local.yml
+**/application-local.yml
