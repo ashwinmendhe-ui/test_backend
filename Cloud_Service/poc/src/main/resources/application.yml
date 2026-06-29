@@ -1,3 +1,67 @@
+server:
+  port: ${SERVER_PORT:6789}
+
 spring:
+  application:
+    name: dhive
+
   profiles:
-    active: local
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    org.springframework.security: INFO
+    com.dji.sample: INFO
+    org.hibernate.SQL: OFF
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:my-super-secret-key-my-super-secret-key-123456}
+    access-token-expiration-ms: ${JWT_ACCESS_TOKEN_EXPIRATION_MS:86400000}
+    refresh-token-expiration-ms: ${JWT_REFRESH_TOKEN_EXPIRATION_MS:259200000}
+  upload:
+    mission-dir: ${MISSION_UPLOAD_DIR:uploads/missions}
+
+cors:
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173}
+  allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,OPTIONS}
+  allowed-headers: ${CORS_ALLOWED_HEADERS:*}
+  allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+  max-age: ${CORS_MAX_AGE:3600}
+
+aws:
+  region: ${AWS_REGION:ap-northeast-2}
+  s3:
+    mission-bucket: ${AWS_S3_MISSION_BUCKET:robopilot-mission}
+    stream-bucket: ${AWS_S3_STREAM_BUCKET:robopilot-stream-data}
+
+mqtt:
+  enabled: ${MQTT_ENABLED:true}
+  host: ${MQTT_HOST:localhost}
+  port: ${MQTT_PORT:1883}
+  client-id: ${MQTT_CLIENT_ID:dhive-local-backend}
+  username: ${MQTT_USERNAME:cloud-server}
+  password: ${MQTT_PASSWORD:}
+  inbound-topic: ${MQTT_INBOUND_TOPIC:sys/product/+/status,thing/product/+/osd,thing/product/+/state,thing/product/+/services_reply,robot/+/health,robot/+/response,robot/+/job/state,robot/+/state,robot/+/telemetry}
+
+cloud-sdk:
+  mqtt:
+    inbound-topic: ${CLOUD_SDK_MQTT_INBOUND_TOPIC:${mqtt.inbound-topic}}
+
+ai-service:
+  base-url: ${AI_SERVICE_BASE_URL:http://localhost:7879}
+  stream-endpoint: ${AI_SERVICE_STREAM_ENDPOINT:/api/stream}
+  timeout: ${AI_SERVICE_TIMEOUT:10000}
+  rtmp-url: ${AI_SERVICE_RTMP_URL:rtmp://43.202.9.216:1935}
+
+slack:
+  enabled: ${SLACK_ENABLED:false}
+  bot-token: ${SLACK_BOT_TOKEN:}

@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+
+  redis:
+    device-alive-second: ${DEVICE_ALIVE_SECOND:120}
+
+cors:
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS}
+
+mqtt:
+  host: ${MQTT_HOST}
+  port: ${MQTT_PORT:1883}
+  client-id: ${MQTT_CLIENT_ID:dhive-prod-backend}
+  username: ${MQTT_USERNAME}
+  password: ${MQTT_PASSWORD}
+
+ai-service:
+  base-url: ${AI_SERVICE_BASE_URL}
+  rtmp-url: ${AI_SERVICE_RTMP_URL}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
