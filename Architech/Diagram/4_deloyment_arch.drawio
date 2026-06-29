@@ -1,0 +1,151 @@
+<mxfile host="app.diagrams.net" modified="2026-06-24T00:00:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+  <diagram id="robopilot-diagram-4-ecs-deployment" name="Diagram 4 - ECS Deployment Architecture">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1150" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="ROBOPILOT Diagram 4 - ECS Deployment Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=28;fontStyle=1;fontColor=#0B1320;" vertex="1" parent="1">
+          <mxGeometry x="420" y="20" width="960" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Infrastructure deployment view for service separation target architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="520" y="60" width="760" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Internet Users -->
+        <mxCell id="users" value="&lt;b&gt;Internet / Users&lt;/b&gt;&lt;br&gt;Web Dashboard / Admin / Operators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF2FF;strokeColor=#1E5BB8;fontSize=14;spacing=10;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="105" width="430" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="alb" value="&lt;b&gt;Application Load Balancer&lt;/b&gt;&lt;br&gt;Public ALB / HTTPS Entry Point" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=14;spacing=10;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="700" y="220" width="390" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="users_alb" value="HTTPS" style="endArrow=block;html=1;rounded=0;strokeColor=#1E5BB8;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="users" target="alb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Devices -->
+        <mxCell id="devices_box" value="&lt;b&gt;Robot / Drone Devices&lt;/b&gt;" style="swimlane;whiteSpace=wrap;html=1;fillColor=#F0FFF4;strokeColor=#2E7D32;fontSize=16;fontStyle=1;startSize=34;rounded=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="45" y="340" width="260" height="285" as="geometry" />
+        </mxCell>
+        <mxCell id="robot" value="&lt;b&gt;GO2 Robot&lt;/b&gt;&lt;br&gt;• Health&lt;br&gt;• Telemetry&lt;br&gt;• State" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontSize=13;spacing=8;" vertex="1" parent="devices_box">
+          <mxGeometry x="20" y="55" width="220" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="drone" value="&lt;b&gt;DJI Drone&lt;/b&gt;&lt;br&gt;• OSD / State&lt;br&gt;• Services Reply&lt;br&gt;• Telemetry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontSize=13;spacing=8;" vertex="1" parent="devices_box">
+          <mxGeometry x="20" y="165" width="220" height="95" as="geometry" />
+        </mxCell>
+
+        <!-- VPC -->
+        <mxCell id="vpc" value="&lt;b&gt;AWS VPC&lt;/b&gt;" style="swimlane;whiteSpace=wrap;html=1;fillColor=#F8FBFF;strokeColor=#4B5563;fontSize=18;fontStyle=1;startSize=40;rounded=1;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="350" y="325" width="1040" height="500" as="geometry" />
+        </mxCell>
+
+        <!-- ECS Cluster -->
+        <mxCell id="ecs_cluster" value="&lt;b&gt;ECS Cluster - Fargate (Non-GPU Services)&lt;/b&gt;" style="swimlane;whiteSpace=wrap;html=1;fillColor=#EEF6FF;strokeColor=#1E5BB8;fontSize=16;fontStyle=1;startSize=32;rounded=1;arcSize=6;dashed=1;dashPattern=8 4;" vertex="1" parent="vpc">
+          <mxGeometry x="30" y="60" width="640" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud_api" value="&lt;b&gt;cloud-api-service&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#555555&quot;&gt;ECS Fargate Task&lt;/font&gt;&lt;br&gt;• REST APIs&lt;br&gt;• Public WebSocket (/ws)&lt;br&gt;• Dashboard APIs&lt;br&gt;• Stream lifecycle&lt;br&gt;• History / Playback APIs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=13;spacing=8;" vertex="1" parent="ecs_cluster">
+          <mxGeometry x="25" y="60" width="190" height="245" as="geometry" />
+        </mxCell>
+        <mxCell id="mqtt_service" value="&lt;b&gt;mqtt-device-service&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#555555&quot;&gt;ECS Fargate Task&lt;/font&gt;&lt;br&gt;• MQTT subscriptions&lt;br&gt;• Robot health / telemetry&lt;br&gt;• DJI OSD / state&lt;br&gt;• DeviceOfflineMonitor&lt;br&gt;• Device events" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F7FA;strokeColor=#00838F;fontSize=13;spacing=8;" vertex="1" parent="ecs_cluster">
+          <mxGeometry x="230" y="60" width="190" height="245" as="geometry" />
+        </mxCell>
+        <mxCell id="notif_service" value="&lt;b&gt;notification-service&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#555555&quot;&gt;ECS Fargate Task&lt;/font&gt;&lt;br&gt;• Slack reports&lt;br&gt;• Recipient resolution&lt;br&gt;• Slack user lookup&lt;br&gt;• Retry handling&lt;br&gt;• Future email / alerting" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#EF6C00;fontSize=13;spacing=8;" vertex="1" parent="ecs_cluster">
+          <mxGeometry x="435" y="60" width="190" height="245" as="geometry" />
+        </mxCell>
+
+        <!-- GPU -->
+        <mxCell id="gpu_box" value="&lt;b&gt;GPU Compute Layer&lt;/b&gt;&lt;br&gt;GPU EC2 / ECS EC2 GPU" style="swimlane;whiteSpace=wrap;html=1;fillColor=#F7F0FF;strokeColor=#6A1B9A;fontSize=16;fontStyle=1;startSize=50;rounded=1;arcSize=6;" vertex="1" parent="vpc">
+          <mxGeometry x="720" y="60" width="280" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_service" value="&lt;b&gt;ai-service&lt;/b&gt;&lt;br&gt;• DeepStream&lt;br&gt;• Object Detection&lt;br&gt;• HLS generation&lt;br&gt;• info.json&lt;br&gt;• bookmark.ndjson" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;fontSize=13;spacing=8;" vertex="1" parent="gpu_box">
+          <mxGeometry x="25" y="75" width="230" height="145" as="geometry" />
+        </mxCell>
+
+        <!-- Shared AWS Services -->
+        <mxCell id="shared_title" value="&lt;b&gt;Shared AWS Services&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontStyle=1;fontColor=#006064;" vertex="1" parent="1">
+          <mxGeometry x="385" y="850" width="880" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="rds" value="&lt;b&gt;Amazon RDS PostgreSQL&lt;/b&gt;&lt;br&gt;Shared business DB&lt;br&gt;Logical ownership by service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="380" y="895" width="190" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="redis" value="&lt;b&gt;ElastiCache Redis&lt;/b&gt;&lt;br&gt;Online/offline state&lt;br&gt;Runtime heartbeat&lt;br&gt;Mission/stream state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="590" y="895" width="190" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" value="&lt;b&gt;Amazon S3&lt;/b&gt;&lt;br&gt;HLS segments&lt;br&gt;info.json&lt;br&gt;bookmark.ndjson&lt;br&gt;Reports / files" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="800" y="895" width="190" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="cf" value="&lt;b&gt;CloudFront&lt;/b&gt;&lt;br&gt;Playback CDN&lt;br&gt;Global delivery&lt;br&gt;HLS playback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="895" width="190" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="secrets" value="&lt;b&gt;AWS Secrets Manager&lt;/b&gt;&lt;br&gt;DB password&lt;br&gt;Slack bot token&lt;br&gt;API credentials" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#EF6C00;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="895" width="190" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cloudwatch" value="&lt;b&gt;CloudWatch / X-Ray&lt;/b&gt;&lt;br&gt;Logs&lt;br&gt;Metrics&lt;br&gt;Alarms / tracing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#AD1457;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1430" y="895" width="190" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- External Slack -->
+        <mxCell id="slack" value="&lt;b&gt;Slack Workspace&lt;/b&gt;&lt;br&gt;AI Detection Session Report&lt;br&gt;Company users" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFECEC;strokeColor=#D32F2F;fontSize=14;spacing=10;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1460" y="530" width="260" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Summary -->
+        <mxCell id="summary" value="&lt;b&gt;Deployment Strategy&lt;/b&gt;&lt;br&gt;&lt;br&gt;• Non-GPU services on ECS Fargate&lt;br&gt;• GPU workloads isolated on GPU EC2 / ECS EC2 GPU&lt;br&gt;• Shared PostgreSQL RDS in Phase 1&lt;br&gt;• Redis runtime state via ElastiCache&lt;br&gt;• S3 + CloudFront for HLS / metadata delivery&lt;br&gt;• Secrets stored in AWS Secrets Manager&lt;br&gt;• Centralized logs and alarms in CloudWatch&lt;br&gt;• Dev ECS services can scale to 0 when not used" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#F9A825;fontSize=13;spacing=12;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1460" y="190" width="285" height="270" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#1E5BB8&quot;&gt;━━&lt;/font&gt; HTTPS / REST / WebSocket&lt;br&gt;&lt;font color=&quot;#2E7D32&quot;&gt;━━&lt;/font&gt; MQTT device communication&lt;br&gt;&lt;font color=&quot;#111111&quot;&gt;━━&lt;/font&gt; Internal service/data flow&lt;br&gt;&lt;font color=&quot;#6A1B9A&quot;&gt;━━&lt;/font&gt; AI / stream processing&lt;br&gt;&lt;font color=&quot;#D32F2F&quot;&gt;━━&lt;/font&gt; External notification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BDBDBD;fontSize=13;spacing=10;dashed=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="50" y="865" width="260" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Notes -->
+        <mxCell id="notes" value="&lt;b&gt;Notes&lt;/b&gt;&lt;br&gt;• Public traffic enters through ALB and reaches only cloud-api-service.&lt;br&gt;• mqtt-device-service handles device MQTT traffic and owns Redis runtime state.&lt;br&gt;• notification-service sends Slack asynchronously using outbox/scheduler in Phase 1.&lt;br&gt;• GPU service is optimized separately because current cost is mostly GPU/EC2 related." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#BDBDBD;fontSize=12;spacing=10;dashed=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="390" y="1035" width="1050" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <mxCell id="alb_api" value="HTTPS / REST / WebSocket" style="endArrow=block;html=1;rounded=0;strokeColor=#1E5BB8;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="alb" target="cloud_api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="device_mqtt" value="MQTT" style="endArrow=block;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="devices_box" target="mqtt_service">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mqtt_redis" value="online / telemetry state" style="endArrow=block;html=1;rounded=0;strokeColor=#111111;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="mqtt_service" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="api_redis" value="read device state" style="endArrow=block;startArrow=block;html=1;rounded=0;strokeColor=#111111;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="cloud_api" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="api_rds" value="business data" style="endArrow=block;startArrow=block;html=1;rounded=0;strokeColor=#111111;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="cloud_api" target="rds">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="api_ai" value="AI detection / stream request" style="endArrow=block;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="cloud_api" target="ai_service">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_s3" value="write HLS / metadata" style="endArrow=block;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="ai_service" target="s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_cf" value="serve playback" style="endArrow=block;html=1;rounded=0;strokeColor=#111111;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="s3" target="cf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="notif_slack" value="Slack report async" style="endArrow=block;html=1;rounded=0;strokeColor=#D32F2F;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="notif_service" target="slack">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="notif_rds" value="notification_outbox" style="endArrow=block;startArrow=block;html=1;rounded=0;strokeColor=#111111;strokeWidth=2;fontSize=12;" edge="1" parent="1" source="notif_service" target="rds">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="services_secrets" value="secrets" style="endArrow=block;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2;fontSize=12;dashed=1;" edge="1" parent="1" source="ecs_cluster" target="secrets">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs_cloudwatch" value="logs / metrics" style="endArrow=block;html=1;rounded=0;strokeColor=#AD1457;strokeWidth=2;fontSize=12;dashed=1;" edge="1" parent="1" source="ecs_cluster" target="cloudwatch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gpu_logs" value="GPU logs / metrics" style="endArrow=block;html=1;rounded=0;strokeColor=#AD1457;strokeWidth=2;fontSize=12;dashed=1;" edge="1" parent="1" source="gpu_box" target="cloudwatch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

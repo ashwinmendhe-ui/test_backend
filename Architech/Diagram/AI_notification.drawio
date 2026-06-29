@@ -1,0 +1,63 @@
+<mxfile host="app.diagrams.net" modified="2026-06-24T00:00:00.000Z" agent="ChatGPT" version="24.7.8">
+  <diagram name="Diagram 3 - Notification Flow">
+    <mxGraphModel dx="1800" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="ROBOPILOT Diagram 3 - Notification Flow / AI Detection Session Report Flow" style="text;html=1;fontSize=24;fontStyle=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="170" y="30" width="1260" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="Target: move Slack report out of stopStream direct flow using async report event processing" style="text;html=1;fontSize=14;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="290" y="72" width="1020" height="28" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="frontend" value="Frontend&#xa;Stream Page" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="180" width="170" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="cloudapi" value="cloud-api-service&#xa;Stream Lifecycle + History APIs&#xa;Public /ws" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="330" y="170" width="230" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="rds" value="Shared RDS PostgreSQL&#xa;Phase 1 logical ownership&#xa;report_history&#xa;notification_outbox" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="650" y="150" width="230" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="notifier" value="notification-service&#xa;Outbox Scheduler / Worker&#xa;Slack formatting + retry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="170" width="240" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="slack" value="Slack Workspace&#xa;AI Detection Session Report&#xa;Recipients resolved by company users" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="170" width="230" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ai" value="ai-service / GPU Stack&#xa;DeepStream / Object Detection&#xa;HLS + info.json + bookmark.ndjson" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="330" y="390" width="250" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3" value="S3 / CloudFront&#xa;HLS playback files&#xa;metadata + bookmarks" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="390" width="220" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="futurebus" value="Phase 2 Option&#xa;SQS / EventBridge&#xa;AI_REPORT_CREATED event bus" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="390" width="240" height="100" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="note1" value="Phase 1: reliable async notification using DB outbox. stopStream remains fast and does not wait for Slack delivery." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="110" y="650" width="620" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="note2" value="Phase 2: replace or extend outbox with SQS/EventBridge for stronger service decoupling and scalable event fan-out." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;align=left;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="850" y="650" width="620" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" value="1. Stop Stream" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="frontend" target="cloudapi"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="2. Stop AI session / finalize playback" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="cloudapi" target="ai"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="3. Generate HLS + metadata" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="ai" target="s3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="4. Return playbackUrl + metadata reference" style="endArrow=block;html=1;rounded=0;strokeWidth=2;dashed=1;" edge="1" parent="1" source="ai" target="cloudapi"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="455" y="330"/></Array></mxGeometry></mxCell>
+        <mxCell id="e5" value="5. Create report_history" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="cloudapi" target="rds"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" value="6. Insert AI_REPORT_CREATED outbox event" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="cloudapi" target="rds"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="600" y="250"/></Array></mxGeometry></mxCell>
+        <mxCell id="e7" value="7. Poll pending outbox event" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="notifier" target="rds"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" value="8. Read report + resolve recipients" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="notifier" target="rds"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="930" y="250"/></Array></mxGeometry></mxCell>
+        <mxCell id="e9" value="9. Send Slack report async" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="notifier" target="slack"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e10" value="10. Mark SENT / FAILED + retry count" style="endArrow=block;html=1;rounded=0;strokeWidth=2;dashed=1;" edge="1" parent="1" source="notifier" target="rds"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1040" y="315"/><mxPoint x="765" y="315"/></Array></mxGeometry></mxCell>
+        <mxCell id="e11" value="Phase 2 publish/consume" style="endArrow=block;html=1;rounded=0;strokeWidth=2;dashed=1;" edge="1" parent="1" source="cloudapi" target="futurebus"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="720" y="360"/></Array></mxGeometry></mxCell>
+        <mxCell id="e12" value="Phase 2 consume" style="endArrow=block;html=1;rounded=0;strokeWidth=2;dashed=1;" edge="1" parent="1" source="futurebus" target="notifier"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
