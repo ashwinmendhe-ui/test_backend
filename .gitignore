@@ -25,6 +25,8 @@ surefire-reports/
 
 # Env files (optional later)
 .env
+.env.*
+!.env.example
 
 # Some md files
 Test.md

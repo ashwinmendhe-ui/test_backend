@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import org.springframework.data.domain.PageRequest;
 
 @Slf4j
 @Service
@@ -40,9 +41,8 @@ public class HistoryServiceImpl implements HistoryService {
     
     @Override
     public List<HistoryListResponse> getList() {
-        return reportHistoryRepository.findAll()
+        return reportHistoryRepository.findByOrderByCreatedAtDesc(PageRequest.of(0, 20))
                 .stream()
-                .sorted(Comparator.comparing(ReportHistory::getCreatedAt).reversed())
                 .map(this::toListResponse)
                 .toList();
     }

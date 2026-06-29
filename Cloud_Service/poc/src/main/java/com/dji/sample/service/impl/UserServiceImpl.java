@@ -209,12 +209,8 @@ public class UserServiceImpl implements UserService {
         user.setCompanyId(companyId);
 
         if (companyId != null) {
-            Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId)
+            companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId)
                     .orElseThrow(() -> new RuntimeException("Company not found"));
-
-            user.setCompanyName(company.getName());
-        } else {
-            user.setCompanyName(companyName);
         }
     }
 
@@ -348,12 +344,12 @@ public class UserServiceImpl implements UserService {
 
     private String resolveCompanyName(User user) {
         if (user.getCompanyId() == null) {
-            return user.getCompanyName();
+            return null;
         }
 
         return companyRepository.findByCompanyIdAndDeletedAtIsNull(user.getCompanyId())
                 .map(Company::getName)
-                .orElse(user.getCompanyName());
+                .orElse(null);
     }
 
     private void updateUserAssignments(User user, List<UUID> siteIds, List<UUID> missionIds, List<UUID> deviceIds) {

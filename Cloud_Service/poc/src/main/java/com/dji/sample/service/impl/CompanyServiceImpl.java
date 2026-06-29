@@ -113,7 +113,6 @@ public class CompanyServiceImpl implements CompanyService {
         List<User> users = userRepository.findByCompanyIdAndDeletedAtIsNull(id);
         for (User user : users) {
             user.setCompanyId(null);
-            user.setCompanyName(null);
             userRepository.save(user);
         }
 

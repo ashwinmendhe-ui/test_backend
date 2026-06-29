@@ -52,8 +52,8 @@ public class User {
     private UUID companyId;
 
     // FE compatibility only; production does not need this
-    @Column(name = "company_name")
-    private String companyName;
+    // @Column(name = "company_name")
+    // private String companyName;
 
     @Column(name = "last_login_at")
     private OffsetDateTime lastLoginAt;
