@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.UUID;
 import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.dji.sample.entity.SubDevice;
+import com.dji.sample.repository.SubDeviceRepository;
 
 
 @Service
@@ -38,6 +40,7 @@ public class DeviceServiceImpl implements DeviceService {
     private final IDeviceRedisService deviceRedisService;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
+    private final SubDeviceRepository subDeviceRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -206,18 +209,6 @@ public class DeviceServiceImpl implements DeviceService {
         return trimmed;
     }
 
-    @Override
-    public void markDeviceOnlineForTest(String deviceSn) {
-        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn)
-                .orElseThrow(() -> new RuntimeException("Device not found"));
-
-        deviceRedisService.setDeviceOnline(device);
-    }
-
-    @Override
-    public void markDeviceOfflineForTest(String deviceSn) {
-        deviceRedisService.delDeviceOnline(deviceSn);
-    }
 
     private RobotTelemetryResponse getTelemetryResponse(String deviceSn) {
         if (deviceSn == null || deviceSn.isBlank()) {
@@ -242,6 +233,18 @@ public class DeviceServiceImpl implements DeviceService {
     public RobotTelemetryResponse getTelemetryByDeviceSn(String deviceSn) {
         return getTelemetryResponse(deviceSn);
     }
+
+    private String resolveStreamDeviceSn(String deviceSn) {
+            if (deviceSn == null || deviceSn.isBlank()) {
+                return deviceSn;
+            }
+
+            return subDeviceRepository
+                    .findFirstByDeviceSnAndDeletedAtIsNullOrderByIdAsc(deviceSn)
+                    .map(SubDevice::getSn)
+                    .filter(sn -> sn != null && !sn.isBlank())
+                    .orElse(deviceSn);
+        }
     private DeviceResponse toResponse(Device device) {
         Company company = device.getCompany();
         Site site = device.getSite();
@@ -251,11 +254,13 @@ public class DeviceServiceImpl implements DeviceService {
         boolean hasActiveStream = false;
 
         if (device.getDeviceSn() != null) {
-    var activeSession = liveStreamSessionRepository
-            .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                    device.getDeviceSn(),
-                    "ACTIVE"
-            );
+            String streamDeviceSn = resolveStreamDeviceSn(device.getDeviceSn());
+
+            var activeSession = liveStreamSessionRepository
+                    .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
+                            streamDeviceSn,
+                            "ACTIVE"
+                    );
 
     hasActiveStream = activeSession.isPresent();
 
@@ -312,7 +317,6 @@ public class DeviceServiceImpl implements DeviceService {
                     ? "working"
                     : "online";
         }
-
 
 
         return DeviceResponse.builder()

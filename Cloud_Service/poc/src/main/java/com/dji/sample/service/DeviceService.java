@@ -24,8 +24,5 @@ public interface DeviceService {
 
     void deleteDevice(UUID deviceId);
 
-    void markDeviceOnlineForTest(String deviceSn);
-
-    void markDeviceOfflineForTest(String deviceSn);
     RobotTelemetryResponse getTelemetryByDeviceSn(String deviceSn);
 }

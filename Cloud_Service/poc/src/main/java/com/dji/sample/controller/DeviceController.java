@@ -62,26 +62,4 @@ public class DeviceController {
     public void deleteDevice(@PathVariable UUID deviceId) {
         deviceService.deleteDevice(deviceId);
     }
-
-    @PostMapping("/{deviceSn}/online-test")
-    public ApiResponse<String> markDeviceOnline(@PathVariable String deviceSn) {
-        deviceService.markDeviceOnlineForTest(deviceSn);
-
-        return ApiResponse.<String>builder()
-                .success(true)
-                .message("Device marked online")
-                .data(deviceSn)
-                .build();
-    }
-
-    @PostMapping("/{deviceSn}/offline-test")
-    public ApiResponse<String> markDeviceOffline(@PathVariable String deviceSn) {
-        deviceService.markDeviceOfflineForTest(deviceSn);
-
-        return ApiResponse.<String>builder()
-                .success(true)
-                .message("Device marked offline")
-                .data(deviceSn)
-                .build();
-    }
 }

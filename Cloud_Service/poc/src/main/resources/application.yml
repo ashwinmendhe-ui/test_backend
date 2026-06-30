@@ -23,6 +23,7 @@ logging:
     org.hibernate.SQL: OFF
 
 app:
+  public-base-url: ${APP_PUBLIC_BASE_URL:http://localhost:6789}
   jwt:
     secret: ${JWT_SECRET:my-super-secret-key-my-super-secret-key-123456}
     access-token-expiration-ms: ${JWT_ACCESS_TOKEN_EXPIRATION_MS:86400000}

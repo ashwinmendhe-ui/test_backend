@@ -2,21 +2,27 @@ package com.dji.sample.service.impl;
 
 import com.dji.sample.drone.service.DjiLivestreamService;
 import com.dji.sample.dto.request.AiServiceStreamRequest;
+import com.dji.sample.dto.request.CreateHistoryRequest;
 import com.dji.sample.dto.request.StartStreamRequest;
 import com.dji.sample.dto.request.StopStreamRequest;
+import com.dji.sample.dto.response.HistoryDetailResponse;
 import com.dji.sample.dto.response.StartStreamResponse;
 import com.dji.sample.dto.response.StreamInfoResponse;
 import com.dji.sample.dto.response.StreamStatusResponse;
 import com.dji.sample.entity.Device;
 import com.dji.sample.entity.LiveStreamSession;
+import com.dji.sample.entity.SubDevice;
 import com.dji.sample.repository.DeviceRepository;
 import com.dji.sample.repository.LiveStreamSessionRepository;
+import com.dji.sample.repository.SubDeviceRepository;
 import com.dji.sample.robot.service.IRobotCommandService;
 import com.dji.sample.security.CustomUserDetails;
+import com.dji.sample.service.DeviceWebSocketPublisher;
 import com.dji.sample.service.HistoryService;
 import com.dji.sample.service.IAiServiceClient;
 import com.dji.sample.service.IDeviceRedisService;
 import com.dji.sample.service.LiveStreamService;
+import com.dji.sample.service.SlackNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,10 +36,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.dji.sample.service.DeviceWebSocketPublisher;
-import com.dji.sample.service.SlackNotificationService;
-import com.dji.sample.dto.request.CreateHistoryRequest;
-import com.dji.sample.dto.response.HistoryDetailResponse;
+import org.springframework.beans.factory.annotation.Value;
 
 @Slf4j
 @Service
@@ -49,16 +52,25 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final DjiLivestreamService djiLivestreamService;
     private final DeviceWebSocketPublisher webSocketPublisher;
     private final SlackNotificationService slackNotificationService;
+    private final SubDeviceRepository subDeviceRepository;
 
     @Value("${ai-service.rtmp-url}")
     private String rtmpBaseUrl;
 
+    @Value("${app.public-base-url:http://localhost:6789}")
+    private String publicBaseUrl;
+
     @Override
     public StartStreamResponse startStream(StartStreamRequest request) {
 
+        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
+                .orElseThrow(() -> new RuntimeException("Device not found"));
+
+        StreamSource streamSource = resolveStreamSource(request, device);
+
         boolean activeDeviceSessionExists =
                 liveStreamSessionRepository.existsByDeviceSnAndSessionStatus(
-                        request.getDeviceSn(),
+                        streamSource.streamDeviceSn(),
                         "ACTIVE"
                 );
 
@@ -78,20 +90,23 @@ public class LiveStreamServiceImpl implements LiveStreamService {
             }
         }
 
-        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
-                .orElseThrow(() -> new RuntimeException("Device not found"));
-
         UUID currentUserId = getCurrentUserId();
-        String streamId = resolveStreamId(request, device);
+
+        String requestDeviceSn = request.getDeviceSn();
+        String streamId = streamSource.streamDeviceSn();
+        String videoId = streamSource.videoId();
+        String gatewaySn = streamSource.gatewaySn();
+        String payloadIndex = streamSource.payloadIndex();
+        String djiVideoType = streamSource.videoType();
 
         String rtmpUrl = rtmpBaseUrl + "/streams/" + streamId;
         String vectorMapUrl = rtmpBaseUrl + "/streams/" + streamId + "-vector";
 
-        log.info("Start stream deviceType={}, requestDeviceSn={}, streamId={}, rtmpUrl={}",
-                device.getDeviceType(), request.getDeviceSn(), streamId, rtmpUrl);
+        log.info("Start stream deviceType={}, requestDeviceSn={}, streamId={}, videoId={}, rtmpUrl={}",
+                device.getDeviceType(), requestDeviceSn, streamId, videoId, rtmpUrl);
 
         LiveStreamSession session = new LiveStreamSession();
-        session.setDeviceSn(request.getDeviceSn());
+        session.setDeviceSn(streamId);
         session.setUserId(currentUserId);
         session.setSessionStatus("ACTIVE");
         session.setQuality(
@@ -102,20 +117,15 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         session.setStartedAt(OffsetDateTime.now(ZoneOffset.UTC));
         session.setLastHeartbeatAt(OffsetDateTime.now(ZoneOffset.UTC));
         session.setMissionId(request.getMissionId());
-        session.setVideoId(streamId);
+        session.setVideoId(videoId);
 
-        if ("Drone".equalsIgnoreCase(device.getDeviceType())) {
-            String gatewaySn = resolveGatewaySn(request);
-            String droneSn = streamId;
-            String payloadIndex = resolvePayloadIndex(request);
-            String djiVideoType = resolveDjiVideoType(request);
-
+        if (isDrone(device)) {
             log.info("[DJI] Calling live_start_push. gatewaySn={}, droneSn={}, payloadIndex={}, videoType={}, rtmpUrl={}",
-                    gatewaySn, droneSn, payloadIndex, djiVideoType, rtmpUrl);
+                    gatewaySn, streamId, payloadIndex, djiVideoType, rtmpUrl);
 
             djiLivestreamService.startPush(
                     gatewaySn,
-                    droneSn,
+                    streamId,
                     payloadIndex,
                     djiVideoType,
                     request.getVideoQuality() != null ? request.getVideoQuality() : 0,
@@ -123,7 +133,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
             );
         }
 
-        if ("Robot".equalsIgnoreCase(device.getDeviceType())) {
+        if (isRobot(device)) {
             String jobId = UUID.randomUUID().toString();
 
             Map<String, Object> parameters = new HashMap<>();
@@ -136,7 +146,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
             robotJobPayload.put("parameters", parameters);
 
             robotCommandService.createJob(
-                    request.getDeviceSn(),
+                    requestDeviceSn,
                     UUID.randomUUID().toString(),
                     jobId,
                     robotJobPayload
@@ -176,14 +186,13 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
 
         String hlsUrl = buildBackendHlsUrl(saved.getId());
-        // slackNotificationService.notifyStreamStarted(device, saved, hlsUrl);
 
         device.setMissionId(request.getMissionId());
         deviceRepository.save(device);
 
         if (request.getMissionId() != null) {
             deviceRedisService.setRobotJobState(
-                    request.getDeviceSn(),
+                    requestDeviceSn,
                     "stream-" + saved.getId(),
                     "WORKING",
                     request.getMissionId().toString()
@@ -191,7 +200,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         }
 
         webSocketPublisher.publishDashboardStatus(
-                request.getDeviceSn(),
+                requestDeviceSn,
                 "WORKING",
                 "stream-start"
         );
@@ -213,10 +222,12 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     @Override
     public StreamInfoResponse stopStream(StopStreamRequest request) {
 
+        StreamSource streamSource = resolveStreamSourceForDeviceSn(request.getDeviceSn());
+
         LiveStreamSession session =
                 liveStreamSessionRepository
                         .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                                request.getDeviceSn(),
+                                streamSource.streamDeviceSn(),
                                 "ACTIVE"
                         )
                         .orElseThrow(() ->
@@ -224,7 +235,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                         );
 
         try {
-            aiServiceClient.unregisterStream(request.getDeviceSn());
+            aiServiceClient.unregisterStream(streamSource.streamDeviceSn());
         } catch (Exception e) {
             throw new RuntimeException("AI service stream unregister failed: " + e.getMessage(), e);
         }
@@ -237,25 +248,22 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         LiveStreamSession saved = liveStreamSessionRepository.save(session);
 
         try {
-                CreateHistoryRequest historyRequest = new CreateHistoryRequest();
-                historyRequest.setDeviceSn(saved.getDeviceSn());
-                historyRequest.setMissionId(saved.getMissionId());
-                historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
+            CreateHistoryRequest historyRequest = new CreateHistoryRequest();
+            historyRequest.setDeviceSn(request.getDeviceSn());
+            historyRequest.setMissionId(saved.getMissionId());
+            historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
 
-                HistoryDetailResponse report = historyService.createHistory(historyRequest);
+            HistoryDetailResponse report = historyService.createHistory(historyRequest);
+            slackNotificationService.notifyAiDetectionReport(report);
 
-                slackNotificationService.notifyAiDetectionReport(report);
-
-                } catch (Exception e) {
-                log.warn(
-                        "[History/Slack] Failed to create history or send report. deviceSn={}, error={}",
-                        saved.getDeviceSn(),
-                        e.getMessage(),
-                        e
-                );
+        } catch (Exception e) {
+            log.warn(
+                    "[History/Slack] Failed to create history or send report. deviceSn={}, error={}",
+                    request.getDeviceSn(),
+                    e.getMessage(),
+                    e
+            );
         }
-
-
 
         Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
                 .orElseThrow(() -> new RuntimeException("Device not found"));
@@ -266,7 +274,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         deviceRedisService.clearRobotJobState(request.getDeviceSn());
         deviceRedisService.clearDeviceStatus(request.getDeviceSn());
 
-       webSocketPublisher.publishDashboardRefresh(
+        webSocketPublisher.publishDashboardRefresh(
                 request.getDeviceSn(),
                 "stream-stop"
         );
@@ -290,9 +298,11 @@ public class LiveStreamServiceImpl implements LiveStreamService {
 
         } catch (IllegalArgumentException e) {
 
+            StreamSource streamSource = resolveStreamSourceForDeviceSn(streamId);
+
             session = liveStreamSessionRepository
                     .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                            streamId,
+                            streamSource.streamDeviceSn(),
                             "ACTIVE"
                     )
                     .orElseThrow(() ->
@@ -323,10 +333,12 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     @Override
     public StreamStatusResponse getStreamStatus(String deviceSn) {
 
+        StreamSource streamSource = resolveStreamSourceForDeviceSn(deviceSn);
+
         var activeSession =
                 liveStreamSessionRepository
                         .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                                deviceSn,
+                                streamSource.streamDeviceSn(),
                                 "ACTIVE"
                         );
 
@@ -363,29 +375,103 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     }
 
     private String buildBackendHlsUrl(UUID sessionId) {
-        return "http://localhost:6789/api/v1/live/hls/" + sessionId + "/index.m3u8";
-    }
+        return publicBaseUrl + "/api/v1/live/hls/" + sessionId + "/index.m3u8";    }
 
-    private String resolveStreamId(StartStreamRequest request, Device device) {
-        if ("Drone".equalsIgnoreCase(device.getDeviceType())
-                && request.getVideoId() != null
+    private StreamSource resolveStreamSource(StartStreamRequest request, Device device) {
+        String requestDeviceSn = request.getDeviceSn();
+
+        if (!isDrone(device)) {
+            return new StreamSource(
+                    requestDeviceSn,
+                    requestDeviceSn,
+                    requestDeviceSn,
+                    requestDeviceSn,
+                    "99-0-0",
+                    "normal",
+                    requestDeviceSn
+            );
+        }
+
+        
+
+        SubDevice subDevice = subDeviceRepository
+                .findFirstByDeviceSnAndDeletedAtIsNullOrderByIdAsc(requestDeviceSn)
+                .orElse(null);
+
+        log.info("[LIVE][SUB_DEVICE] requestDeviceSn={}, found={}, subSn={}",
+                requestDeviceSn,
+                subDevice != null,
+                subDevice != null ? subDevice.getSn() : null);
+
+        String streamDeviceSn = requestDeviceSn;
+        String gatewaySn = requestDeviceSn;
+        String payloadIndex = resolvePayloadIndexFromRequest(request);
+        String videoType = resolveDjiVideoTypeFromRequest(request);
+
+        if (subDevice != null && subDevice.getSn() != null && !subDevice.getSn().isBlank()) {
+            streamDeviceSn = subDevice.getSn();
+
+            Integer type = subDevice.getType() != null ? subDevice.getType() : 99;
+            Integer subType = subDevice.getSubType() != null ? subDevice.getSubType() : 0;
+
+            payloadIndex = type + "-" + subType + "-0";
+        } else if (request.getVideoId() != null
                 && request.getVideoId().getDroneSn() != null
                 && !request.getVideoId().getDroneSn().isBlank()) {
-            return request.getVideoId().getDroneSn();
+            streamDeviceSn = request.getVideoId().getDroneSn();
         }
 
-        return request.getDeviceSn();
+        String videoId = streamDeviceSn + "/" + payloadIndex + "/" + videoType + "-0";
+
+        log.info("[LIVE][STREAM_SOURCE] requestDeviceSn={}, streamDeviceSn={}, gatewaySn={}, payloadIndex={}, videoType={}, videoId={}",
+                requestDeviceSn, streamDeviceSn, gatewaySn, payloadIndex, videoType, videoId);
+
+        return new StreamSource(
+                requestDeviceSn,
+                streamDeviceSn,
+                gatewaySn,
+                streamDeviceSn,
+                payloadIndex,
+                videoType,
+                videoId
+        );
     }
 
-    private String resolveGatewaySn(StartStreamRequest request) {
-        if ("1581F7FVC25A700DF473".equals(request.getDeviceSn())) {
-            return "9N9CNA900174W7";
+    private StreamSource resolveStreamSourceForDeviceSn(String deviceSn) {
+        SubDevice subDevice = subDeviceRepository
+                .findFirstByDeviceSnAndDeletedAtIsNullOrderByIdAsc(deviceSn)
+                .orElse(null);
+
+        if (subDevice != null && subDevice.getSn() != null && !subDevice.getSn().isBlank()) {
+            Integer type = subDevice.getType() != null ? subDevice.getType() : 99;
+            Integer subType = subDevice.getSubType() != null ? subDevice.getSubType() : 0;
+            String payloadIndex = type + "-" + subType + "-0";
+            String videoType = "normal";
+            String videoId = subDevice.getSn() + "/" + payloadIndex + "/" + videoType + "-0";
+
+            return new StreamSource(
+                    deviceSn,
+                    subDevice.getSn(),
+                    deviceSn,
+                    subDevice.getSn(),
+                    payloadIndex,
+                    videoType,
+                    videoId
+            );
         }
 
-        return request.getDeviceSn();
+        return new StreamSource(
+                deviceSn,
+                deviceSn,
+                deviceSn,
+                deviceSn,
+                "99-0-0",
+                "normal",
+                deviceSn
+        );
     }
 
-    private String resolvePayloadIndex(StartStreamRequest request) {
+    private String resolvePayloadIndexFromRequest(StartStreamRequest request) {
         if (request.getVideoId() != null && request.getVideoId().getPayloadIndex() != null) {
             return request.getVideoId().getPayloadIndex().getType()
                     + "-"
@@ -397,7 +483,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         return "99-0-0";
     }
 
-    private String resolveDjiVideoType(StartStreamRequest request) {
+    private String resolveDjiVideoTypeFromRequest(StartStreamRequest request) {
         if (request.getVideoId() != null
                 && request.getVideoId().getVideoType() != null
                 && !request.getVideoId().getVideoType().isBlank()) {
@@ -406,6 +492,29 @@ public class LiveStreamServiceImpl implements LiveStreamService {
 
         return "normal";
     }
+
+    private record StreamSource(
+            String requestDeviceSn,
+            String streamDeviceSn,
+            String gatewaySn,
+            String droneSn,
+            String payloadIndex,
+            String videoType,
+            String videoId
+    ) {}
+
+    private boolean isDrone(Device device) {
+        String type = device.getDeviceType();
+        return "Drone".equalsIgnoreCase(type)
+                || "드론".equals(type);
+        }
+
+        private boolean isRobot(Device device) {
+        String type = device.getDeviceType();
+        return "Robot".equalsIgnoreCase(type)
+                || "4족보행 로봇".equals(type)
+                || "로봇".equals(type);
+        }
 
     private StreamInfoResponse mapToResponse(LiveStreamSession session) {
         String hlsUrl = buildBackendHlsUrl(session.getId());

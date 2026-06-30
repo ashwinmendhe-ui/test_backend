@@ -15,8 +15,11 @@ import org.springframework.messaging.MessageChannel;
 
 import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
 import org.springframework.messaging.MessageHandler;
+import lombok.extern.slf4j.Slf4j;
+
 
 import jakarta.annotation.PostConstruct;
+@Slf4j
 @Configuration
 @RequiredArgsConstructor
 public class LocalMqttConfig {
@@ -109,9 +112,7 @@ public class LocalMqttConfig {
 
     @PostConstruct
     public void init() {
-        System.out.println("MQTT host = " + host + ":" + port);
-        System.out.println("MQTT clientId = " + clientId);
-        System.out.println("MQTT username = " + username);
-        System.out.println("MQTT inbound topics = " + inboundTopic);
+        log.info("[MQTT] Connecting. host={}, port={}, clientId={}", host, port, clientId);
+        log.debug("[MQTT] Inbound topics={}", inboundTopic);
     }
 }

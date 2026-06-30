@@ -17,7 +17,7 @@ import org.springframework.web.client.RestTemplate;
 @Slf4j
 public class AiServiceClientImpl implements IAiServiceClient {
 
-    @Value("${ai-service.base-url:http://10.17.14.114:7879}")
+    @Value("${ai-service.base-url:http://localhost:7879}")
     private String aiServiceBaseUrl;
 
     @Value("${ai-service.stream-endpoint:/api/stream}")
