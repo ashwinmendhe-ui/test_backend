@@ -9,10 +9,14 @@ services:
     ports:
       - "6790:6789"
     env_file:
-      - ${ENV_FILE:-.env}
+      - .env.internal
     environment:
       TZ: Asia/Seoul
-      AWS_PROFILE: robopilot-dev
       AWS_REGION: ap-northeast-2
-    volumes:
-      - ~/.aws:/root/.aws:ro
+    networks:
+      - dhive-network
+
+networks:
+  dhive-network:
+    external: true
+    name: cloud_service_dhive-network
