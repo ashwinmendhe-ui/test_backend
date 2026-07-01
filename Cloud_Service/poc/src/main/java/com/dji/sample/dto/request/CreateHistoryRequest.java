@@ -9,4 +9,5 @@ public class CreateHistoryRequest {
     private String deviceSn;
     private String playbackUrl;
     private UUID missionId;
+    private UUID sessionId;
 }

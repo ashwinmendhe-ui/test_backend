@@ -195,7 +195,14 @@ public class HistoryServiceImpl implements HistoryService {
         Device device = findDevice(request.getDeviceSn());
 
         LiveStreamSession session = null;
-        if (request.getMissionId() != null) {
+
+        if (request.getSessionId() != null) {
+            session = liveStreamSessionRepository
+                    .findById(request.getSessionId())
+                    .orElse(null);
+        }
+
+        if (session == null && request.getMissionId() != null) {
             session = liveStreamSessionRepository
                     .findFirstByDeviceSnAndMissionIdOrderByStartedAtDesc(
                             request.getDeviceSn(),

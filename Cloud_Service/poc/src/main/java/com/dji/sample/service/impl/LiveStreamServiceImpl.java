@@ -252,6 +252,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
             historyRequest.setDeviceSn(request.getDeviceSn());
             historyRequest.setMissionId(saved.getMissionId());
             historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
+            historyRequest.setSessionId(saved.getId());
 
             HistoryDetailResponse report = historyService.createHistory(historyRequest);
             slackNotificationService.notifyAiDetectionReport(report);

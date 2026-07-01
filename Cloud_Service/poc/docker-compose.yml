@@ -1,0 +1,18 @@
+services:
+  robopilot-backend:
+    container_name: robopilot-backend
+    image: robopilot-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "6790:6789"
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      TZ: Asia/Seoul
+      AWS_PROFILE: robopilot-dev
+      AWS_REGION: ap-northeast-2
+    volumes:
+      - ~/.aws:/root/.aws:ro
