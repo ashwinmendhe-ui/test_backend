@@ -13,6 +13,7 @@ services:
     environment:
       TZ: Asia/Seoul
       AWS_REGION: ap-northeast-2
+      REDIS_DB: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
