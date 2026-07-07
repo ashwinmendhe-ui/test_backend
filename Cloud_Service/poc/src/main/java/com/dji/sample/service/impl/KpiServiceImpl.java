@@ -38,7 +38,8 @@ public class KpiServiceImpl implements KpiService {
                 .build();
     }
 
-    private KpiDeviceSummaryResponse getDeviceSummary() {
+    @Override
+    public KpiDeviceSummaryResponse getDeviceSummary() {
         List<Device> devices = deviceRepository.findByDeletedAtIsNull();
 
         long totalDevices = devices.size();
@@ -83,8 +84,8 @@ public class KpiServiceImpl implements KpiService {
                 .offlineCount(offlineCount)
                 .build();
     }
-
-    private KpiMissionSummaryResponse getMissionSummary() {
+    @Override
+    public KpiMissionSummaryResponse getMissionSummary() {
         List<ReportHistory> histories = reportHistoryRepository.findAll();
 
         long totalMissions = histories.size();
