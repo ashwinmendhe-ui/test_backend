@@ -19,6 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.util.List;
+import com.dji.sample.dto.kpi.request.KpiFilterRequest;
+import org.springframework.data.jpa.domain.Specification;
+
+import jakarta.persistence.criteria.Predicate;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -42,6 +47,10 @@ public class KpiServiceImpl implements KpiService {
     @Override
     public KpiDeviceSummaryResponse getDeviceSummary(KpiFilterRequest filter) {
         List<Device> devices = deviceRepository.findByDeletedAtIsNull();
+
+        devices = devices.stream()
+            .filter(device -> matchesDeviceFilter(device, filter))
+            .toList();
 
         long totalDevices = devices.size();
         long robotCount = devices.stream()
@@ -87,8 +96,7 @@ public class KpiServiceImpl implements KpiService {
     }
     @Override
     public KpiMissionSummaryResponse getMissionSummary(KpiFilterRequest filter) {
-        List<ReportHistory> histories = reportHistoryRepository.findAll();
-
+        List<ReportHistory> histories = reportHistoryRepository.findAll(buildHistorySpecification(filter));
         long totalMissions = histories.size();
 
         long completedMissions = histories.stream()
@@ -175,7 +183,72 @@ public class KpiServiceImpl implements KpiService {
     return "UNKNOWN";
 }
 
-    private double round(double value) {
-        return Math.round(value * 100.0) / 100.0;
+    private Specification<ReportHistory> buildHistorySpecification(KpiFilterRequest filter) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (filter == null) {
+                return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+            }
+
+            if (filter.getCompanyId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("companyId"), filter.getCompanyId()));
+            }
+
+            if (filter.getSiteId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("siteId"), filter.getSiteId()));
+            }
+
+            if (filter.getMissionId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("missionId"), filter.getMissionId()));
+            }
+
+            if (filter.getDeviceSn() != null && !filter.getDeviceSn().isBlank()) {
+                predicates.add(criteriaBuilder.equal(root.get("deviceSn"), filter.getDeviceSn().trim()));
+            }
+
+            if (filter.getFromDate() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("startTime"), filter.getFromDate()));
+            }
+
+            if (filter.getToDate() != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("startTime"), filter.getToDate()));
+            }
+
+                return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+            };
+        }
+
+        private boolean matchesDeviceFilter(Device device, KpiFilterRequest filter) {
+    if (filter == null) {
+        return true;
     }
+
+    if (filter.getCompanyId() != null) {
+        if (device.getCompany() == null
+                || !filter.getCompanyId().equals(device.getCompany().getCompanyId())) {
+            return false;
+        }
+    }
+
+    if (filter.getSiteId() != null) {
+        if (device.getSite() == null
+                || !filter.getSiteId().equals(device.getSite().getSiteId())) {
+            return false;
+        }
+    }
+
+    if (filter.getDeviceSn() != null && !filter.getDeviceSn().isBlank()) {
+        if (device.getDeviceSn() == null
+                || !filter.getDeviceSn().trim().equals(device.getDeviceSn())) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+            private double round(double value) {
+                return Math.round(value * 100.0) / 100.0;
+            }
 }

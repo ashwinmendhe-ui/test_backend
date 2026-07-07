@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dji.sample.dto.kpi.request.KpiFilterRequest;
 import com.dji.sample.dto.kpi.response.KpiDeviceSummaryResponse;
 import com.dji.sample.dto.kpi.response.KpiMissionSummaryResponse;
+import org.springdoc.core.annotations.ParameterObject;
 
 @RestController
 @RequestMapping("/api/v1/kpi")
@@ -20,7 +21,7 @@ public class KpiController {
     private final KpiService kpiService;
 
     @GetMapping("/summary")
-    public ApiResponse<KpiSummaryResponse> getSummary(KpiFilterRequest filter) {
+    public ApiResponse<KpiSummaryResponse> getSummary(@ParameterObject KpiFilterRequest filter) {
         return ApiResponse.<KpiSummaryResponse>builder()
                 .success(true)
                 .message("KPI summary fetched successfully")
@@ -29,7 +30,7 @@ public class KpiController {
 }
 
     @GetMapping("/devices/summary")
-    public ApiResponse<KpiDeviceSummaryResponse> getDeviceSummary(KpiFilterRequest filter) {
+    public ApiResponse<KpiDeviceSummaryResponse> getDeviceSummary(@ParameterObject KpiFilterRequest filter) {
         return ApiResponse.<KpiDeviceSummaryResponse>builder()
                 .success(true)
                 .message("KPI device summary fetched successfully")
@@ -38,7 +39,7 @@ public class KpiController {
     }
 
     @GetMapping("/missions/summary")
-    public ApiResponse<KpiMissionSummaryResponse> getMissionSummary(KpiFilterRequest filter) {
+    public ApiResponse<KpiMissionSummaryResponse> getMissionSummary(@ParameterObject KpiFilterRequest filter) {
         return ApiResponse.<KpiMissionSummaryResponse>builder()
                 .success(true)
                 .message("KPI mission summary fetched successfully")
