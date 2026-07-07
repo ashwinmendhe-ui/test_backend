@@ -1,5 +1,6 @@
 package com.dji.sample.service.impl;
 
+import com.dji.sample.dto.kpi.request.KpiFilterRequest;
 import com.dji.sample.dto.kpi.response.KpiDeviceSummaryResponse;
 import com.dji.sample.dto.kpi.response.KpiMissionSummaryResponse;
 import com.dji.sample.dto.kpi.response.KpiSummaryResponse;
@@ -31,15 +32,15 @@ public class KpiServiceImpl implements KpiService {
     private final SubDeviceRepository subDeviceRepository;
 
     @Override
-    public KpiSummaryResponse getSummary() {
+    public KpiSummaryResponse getSummary(KpiFilterRequest filter) {
         return KpiSummaryResponse.builder()
-                .deviceSummary(getDeviceSummary())
-                .missionSummary(getMissionSummary())
+                .deviceSummary(getDeviceSummary(filter))
+                .missionSummary(getMissionSummary(filter))
                 .build();
     }
 
     @Override
-    public KpiDeviceSummaryResponse getDeviceSummary() {
+    public KpiDeviceSummaryResponse getDeviceSummary(KpiFilterRequest filter) {
         List<Device> devices = deviceRepository.findByDeletedAtIsNull();
 
         long totalDevices = devices.size();
@@ -85,7 +86,7 @@ public class KpiServiceImpl implements KpiService {
                 .build();
     }
     @Override
-    public KpiMissionSummaryResponse getMissionSummary() {
+    public KpiMissionSummaryResponse getMissionSummary(KpiFilterRequest filter) {
         List<ReportHistory> histories = reportHistoryRepository.findAll();
 
         long totalMissions = histories.size();
