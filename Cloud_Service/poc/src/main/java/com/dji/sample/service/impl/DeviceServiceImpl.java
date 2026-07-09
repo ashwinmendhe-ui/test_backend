@@ -52,25 +52,49 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<DeviceResponse> getDevices(String keyword, String from, String to, UUID siteId) {
+    public List<DeviceResponse> getDevices(
+            String keyword,
+            String from,
+            String to,
+            UUID siteId,
+            String scope
+    ) {
         User currentUser = getCurrentUser();
         UUID userId = currentUser.getUserId();
 
         boolean isSysAdmin = userRoleRepository.existsByUserIdAndRoleId(userId, 1);
         boolean isCompanyUser = userRoleRepository.existsByUserIdAndRoleId(userId, 3);
-
+        boolean siteScope = "site".equalsIgnoreCase(scope);
         List<Device> devices;
 
         if (isSysAdmin) {
             devices = siteId != null
                     ? deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId)
                     : deviceRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
-        } else if (isCompanyUser && currentUser.getDevices() != null && !currentUser.getDevices().isEmpty()) {
-            devices = currentUser.getDevices().stream()
-                    .filter(device -> device.getDeletedAt() == null)
-                    .filter(device -> siteId == null || (device.getSite() != null && siteId.equals(device.getSite().getSiteId())))
-                    .toList();
-        } else {
+        } else if (isCompanyUser && siteScope && siteId != null) {
+
+    boolean hasAssignedSite = currentUser.getSites() != null
+            && currentUser.getSites().stream()
+                    .anyMatch(site ->
+                            site.getDeletedAt() == null
+                                    && siteId.equals(site.getSiteId()));
+
+    if (!hasAssignedSite) {
+        devices = List.of();
+    } else {
+        devices = deviceRepository
+                .findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId);
+    }
+
+} else if (isCompanyUser && currentUser.getDevices() != null && !currentUser.getDevices().isEmpty()) {
+
+    devices = currentUser.getDevices().stream()
+            .filter(device -> device.getDeletedAt() == null)
+            .filter(device -> siteId == null
+                    || (device.getSite() != null
+                    && siteId.equals(device.getSite().getSiteId())))
+            .toList();
+} else {
             UUID companyId = currentUser.getCompanyId();
 
             if (companyId == null) {

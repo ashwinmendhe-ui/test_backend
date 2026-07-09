@@ -46,8 +46,17 @@ public class MissionServiceImpl implements MissionService {
 
         List<Mission> missions;
 
+        boolean isCompanyUser = userRoleRepository.existsByUserIdAndRoleId(currentUser.getUserId(), 3);
+
         if (isSysAdmin(currentUser)) {
             missions = missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+        } else if (isCompanyUser) {
+            missions = currentUser.getMissions() == null
+                    ? List.of()
+                    : currentUser.getMissions().stream()
+                            .filter(mission -> mission.getDeletedAt() == null)
+                            .sorted(Comparator.comparing(Mission::getCreatedAt).reversed())
+                            .toList();
         } else {
             UUID companyId = currentUser.getCompanyId();
             missions = companyId == null
@@ -85,23 +94,40 @@ public List<MissionResponse> list(String companyId, String siteId) {
             missions = missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
         }
     } else {
-        UUID effectiveCompanyId = currentUser.getCompanyId();
+        boolean isCompanyUser =
+                userRoleRepository.existsByUserIdAndRoleId(currentUser.getUserId(), 3);
 
-        if (effectiveCompanyId == null) {
-            return List.of();
-        }
+        if (isCompanyUser) {
+            UUID requestedSiteId =
+                    siteId != null && !siteId.isBlank() ? UUID.fromString(siteId) : null;
 
-        if (siteId != null && !siteId.isBlank()) {
-            UUID requestedSiteId = UUID.fromString(siteId);
-
-            missions = missionRepository
-                    .findBySiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(requestedSiteId)
-                    .stream()
-                    .filter(mission -> effectiveCompanyId.equals(mission.getCompanyId()))
-                    .toList();
+            missions = currentUser.getMissions() == null
+                    ? List.of()
+                    : currentUser.getMissions().stream()
+                            .filter(mission -> mission.getDeletedAt() == null)
+                            .filter(mission -> requestedSiteId == null
+                                    || requestedSiteId.equals(mission.getSiteId()))
+                            .sorted(Comparator.comparing(Mission::getCreatedAt).reversed())
+                            .toList();
         } else {
-            missions = missionRepository
-                    .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(effectiveCompanyId);
+            UUID effectiveCompanyId = currentUser.getCompanyId();
+
+            if (effectiveCompanyId == null) {
+                return List.of();
+            }
+
+            if (siteId != null && !siteId.isBlank()) {
+                UUID requestedSiteId = UUID.fromString(siteId);
+
+                missions = missionRepository
+                        .findBySiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(requestedSiteId)
+                        .stream()
+                        .filter(mission -> effectiveCompanyId.equals(mission.getCompanyId()))
+                        .toList();
+            } else {
+                missions = missionRepository
+                        .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(effectiveCompanyId);
+            }
         }
     }
 
@@ -109,15 +135,16 @@ public List<MissionResponse> list(String companyId, String siteId) {
             .map(this::toResponse)
             .toList();
 }
-    
-        @Override
-    @Transactional(readOnly = true)
-    public MissionResponse getById(UUID id) {
-        Mission mission = missionRepository.findByMissionIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new EntityNotFoundException("Mission not found"));
 
-        return toResponse(mission);
-    }
+
+    @Override
+@Transactional(readOnly = true)
+public MissionResponse getById(UUID id) {
+    Mission mission = missionRepository.findByMissionIdAndDeletedAtIsNull(id)
+            .orElseThrow(() -> new EntityNotFoundException("Mission not found"));
+
+    return toResponse(mission);
+}
 
     @Override
     public MissionResponse create(MissionRequest request) {
