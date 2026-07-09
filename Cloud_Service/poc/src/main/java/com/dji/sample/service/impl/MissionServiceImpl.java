@@ -19,6 +19,12 @@ import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.entity.User;
+import com.dji.sample.repository.UserRepository;
+import com.dji.sample.repository.UserRoleRepository;
+import com.dji.sample.security.CustomUserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
@@ -29,14 +35,27 @@ public class MissionServiceImpl implements MissionService {
     private final CompanyRepository companyRepository;
     private final SiteRepository siteRepository;
     private final S3PresignService s3PresignService;
+    private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
 
-    @Override
+   @Override
     @Transactional(readOnly = true)
     public List<MissionResponse> search(String keyword, String from, String to) {
+        User currentUser = getCurrentUser();
         String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
 
-        return missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc()
-                .stream()
+        List<Mission> missions;
+
+        if (isSysAdmin(currentUser)) {
+            missions = missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+        } else {
+            UUID companyId = currentUser.getCompanyId();
+            missions = companyId == null
+                    ? List.of()
+                    : missionRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
+        }
+
+        return missions.stream()
                 .filter(mission -> normalizedKeyword.isEmpty()
                         || contains(mission.getMissionName(), normalizedKeyword)
                         || contains(resolveCompanyName(mission.getCompanyId()), normalizedKeyword)
@@ -48,33 +67,50 @@ public class MissionServiceImpl implements MissionService {
                 .map(this::toResponse)
                 .toList();
     }
-
+    
     @Override
-    @Transactional(readOnly = true)
-    public List<MissionResponse> list(String companyId, String siteId) {
+@Transactional(readOnly = true)
+public List<MissionResponse> list(String companyId, String siteId) {
+    User currentUser = getCurrentUser();
+    List<Mission> missions;
+
+    if (isSysAdmin(currentUser)) {
         if (siteId != null && !siteId.isBlank()) {
-            return missionRepository
-                    .findBySiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID.fromString(siteId))
-                    .stream()
-                    .map(this::toResponse)
-                    .toList();
+            missions = missionRepository
+                    .findBySiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID.fromString(siteId));
+        } else if (companyId != null && !companyId.isBlank()) {
+            missions = missionRepository
+                    .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID.fromString(companyId));
+        } else {
+            missions = missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+        }
+    } else {
+        UUID effectiveCompanyId = currentUser.getCompanyId();
+
+        if (effectiveCompanyId == null) {
+            return List.of();
         }
 
-        if (companyId != null && !companyId.isBlank()) {
-            return missionRepository
-                    .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID.fromString(companyId))
-                    .stream()
-                    .map(this::toResponse)
-                    .toList();
-        }
+        if (siteId != null && !siteId.isBlank()) {
+            UUID requestedSiteId = UUID.fromString(siteId);
 
-        return missionRepository.findByDeletedAtIsNullOrderByCreatedAtDesc()
-                .stream()
-                .map(this::toResponse)
-                .toList();
+            missions = missionRepository
+                    .findBySiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(requestedSiteId)
+                    .stream()
+                    .filter(mission -> effectiveCompanyId.equals(mission.getCompanyId()))
+                    .toList();
+        } else {
+            missions = missionRepository
+                    .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(effectiveCompanyId);
+        }
     }
 
-    @Override
+    return missions.stream()
+            .map(this::toResponse)
+            .toList();
+}
+    
+        @Override
     @Transactional(readOnly = true)
     public MissionResponse getById(UUID id) {
         Mission mission = missionRepository.findByMissionIdAndDeletedAtIsNull(id)
@@ -240,6 +276,20 @@ public class MissionServiceImpl implements MissionService {
 
         return trimmed;
     }
+    private User getCurrentUser() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+    if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+        throw new RuntimeException("Authenticated user not found");
+    }
+
+    return userRepository.findByUserIdAndDeletedAtIsNull(customUserDetails.getUserId())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+}
+
+private boolean isSysAdmin(User user) {
+    return userRoleRepository.existsByUserIdAndRoleId(user.getUserId(), 1);
+}
     private MissionResponse toResponse(Mission mission) {
         String objectKey = buildObjectKey(mission);
 

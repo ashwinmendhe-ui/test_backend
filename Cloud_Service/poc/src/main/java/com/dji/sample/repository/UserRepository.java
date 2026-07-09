@@ -28,4 +28,7 @@ public interface UserRepository extends JpaRepository<User, Integer> {
             String email
     );
     List<User> findByCompanyIdAndIsActiveTrueAndDeletedAtIsNull(UUID companyId);
+    long countByDeletedAtIsNull();
+
+    long countByCompanyIdAndDeletedAtIsNull(UUID companyId);
 }

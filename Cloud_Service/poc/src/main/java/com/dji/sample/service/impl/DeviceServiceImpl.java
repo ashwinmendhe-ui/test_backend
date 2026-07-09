@@ -25,6 +25,12 @@ import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.dji.sample.entity.SubDevice;
 import com.dji.sample.repository.SubDeviceRepository;
+import com.dji.sample.entity.User;
+import com.dji.sample.repository.UserRepository;
+import com.dji.sample.repository.UserRoleRepository;
+import com.dji.sample.security.CustomUserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 
 @Service
@@ -41,16 +47,42 @@ public class DeviceServiceImpl implements DeviceService {
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
     private final SubDeviceRepository subDeviceRepository;
+    private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Override
     @Transactional(readOnly = true)
     public List<DeviceResponse> getDevices(String keyword, String from, String to, UUID siteId) {
+        User currentUser = getCurrentUser();
+        UUID userId = currentUser.getUserId();
+
+        boolean isSysAdmin = userRoleRepository.existsByUserIdAndRoleId(userId, 1);
+        boolean isCompanyUser = userRoleRepository.existsByUserIdAndRoleId(userId, 3);
+
         List<Device> devices;
 
-        if (siteId != null) {
-            devices = deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId);
+        if (isSysAdmin) {
+            devices = siteId != null
+                    ? deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId)
+                    : deviceRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+        } else if (isCompanyUser && currentUser.getDevices() != null && !currentUser.getDevices().isEmpty()) {
+            devices = currentUser.getDevices().stream()
+                    .filter(device -> device.getDeletedAt() == null)
+                    .filter(device -> siteId == null || (device.getSite() != null && siteId.equals(device.getSite().getSiteId())))
+                    .toList();
         } else {
-            devices = deviceRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+            UUID companyId = currentUser.getCompanyId();
+
+            if (companyId == null) {
+                devices = List.of();
+            } else if (siteId != null) {
+                devices = deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId)
+                        .stream()
+                        .filter(device -> device.getCompany() != null && companyId.equals(device.getCompany().getCompanyId()))
+                        .toList();
+            } else {
+                devices = deviceRepository.findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
+            }
         }
 
         return devices.stream()
@@ -58,7 +90,6 @@ public class DeviceServiceImpl implements DeviceService {
                 .map(this::toResponse)
                 .toList();
     }
-
     @Override
     @Transactional(readOnly = true)
     public DeviceResponse getDevice(UUID deviceId) {
@@ -245,6 +276,18 @@ public class DeviceServiceImpl implements DeviceService {
                     .filter(sn -> sn != null && !sn.isBlank())
                     .orElse(deviceSn);
         }
+
+    private User getCurrentUser() {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+            if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+                throw new RuntimeException("Authenticated user not found");
+            }
+
+            return userRepository.findByUserIdAndDeletedAtIsNull(customUserDetails.getUserId())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+        }
+
     private DeviceResponse toResponse(Device device) {
         Company company = device.getCompany();
         Site site = device.getSite();

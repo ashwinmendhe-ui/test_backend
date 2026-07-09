@@ -26,6 +26,9 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.security.CustomUserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
@@ -39,25 +42,54 @@ public class UserServiceImpl implements UserService {
     private final SiteRepository siteRepository;
     private final MissionRepository missionRepository;
     private final DeviceRepository deviceRepository;
+    
 
     @Override
     public List<UserResponse> searchUsers(String keyword) {
+
+        User currentUser = getCurrentUser();
         List<User> users;
 
-        if (keyword == null || keyword.isBlank()) {
-            users = userRepository.findByDeletedAtIsNull();
+        if (isSysAdmin(currentUser)) {
+
+            if (keyword == null || keyword.isBlank()) {
+                users = userRepository.findByDeletedAtIsNull();
+            } else {
+                users = userRepository
+                        .findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCaseAndDeletedAtIsNull(
+                                keyword,
+                                keyword
+                        );
+            }
+
         } else {
-            users = userRepository.findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCaseAndDeletedAtIsNull(
-                    keyword,
-                    keyword
-            );
+
+            UUID companyId = currentUser.getCompanyId();
+
+            if (companyId == null) {
+                return List.of();
+            }
+
+            users = userRepository.findByCompanyIdAndDeletedAtIsNull(companyId);
+
+            if (keyword != null && !keyword.isBlank()) {
+                String lower = keyword.toLowerCase();
+
+                users = users.stream()
+                        .filter(user ->
+                                (user.getUsername() != null &&
+                                        user.getUsername().toLowerCase().contains(lower))
+                                        ||
+                                        (user.getEmail() != null &&
+                                                user.getEmail().toLowerCase().contains(lower)))
+                        .toList();
+            }
         }
 
         return users.stream()
                 .map(this::mapToResponse)
                 .toList();
     }
-
     @Override
     public UserResponse getUserById(UUID userId) {
         User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
@@ -351,6 +383,22 @@ public class UserServiceImpl implements UserService {
                 .map(Company::getName)
                 .orElse(null);
     }
+
+    private User getCurrentUser() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+    if (authentication == null ||
+            !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+        throw new RuntimeException("Authenticated user not found");
+    }
+
+    return userRepository.findByUserIdAndDeletedAtIsNull(customUserDetails.getUserId())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+}
+
+private boolean isSysAdmin(User user) {
+    return userRoleRepository.existsByUserIdAndRoleId(user.getUserId(), 1);
+}
 
     private void updateUserAssignments(User user, List<UUID> siteIds, List<UUID> missionIds, List<UUID> deviceIds) {
         user.getSites().clear();

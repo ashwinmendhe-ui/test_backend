@@ -18,4 +18,5 @@ public interface CompanyRepository extends JpaRepository<Company, Integer> {
     List<Company> findByDeletedAtIsNull();
 
     List<Company> findByNameContainingIgnoreCaseAndDeletedAtIsNull(String keyword);
+    long countByDeletedAtIsNull();
 }
