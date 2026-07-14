@@ -93,20 +93,28 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         UUID currentUserId = getCurrentUserId();
 
         String requestDeviceSn = request.getDeviceSn();
-        String streamId = streamSource.streamDeviceSn();
+
+        String physicalStreamSn = streamSource.streamDeviceSn();
+        String aiStreamId = buildAiStreamId(physicalStreamSn);
+
         String videoId = streamSource.videoId();
         String gatewaySn = streamSource.gatewaySn();
         String payloadIndex = streamSource.payloadIndex();
         String djiVideoType = streamSource.videoType();
 
-        String rtmpUrl = rtmpBaseUrl + "/streams/" + streamId;
-        String vectorMapUrl = rtmpBaseUrl + "/streams/" + streamId + "-vector";
-
-        log.info("Start stream deviceType={}, requestDeviceSn={}, streamId={}, videoId={}, rtmpUrl={}",
-                device.getDeviceType(), requestDeviceSn, streamId, videoId, rtmpUrl);
-
+        String rtmpUrl = rtmpBaseUrl + "/streams/" + physicalStreamSn;
+        String vectorMapUrl = rtmpBaseUrl + "/streams/" + physicalStreamSn + "-vector";
+        log.info(
+                "Start stream deviceType={}, requestDeviceSn={}, physicalStreamSn={}, aiStreamId={}, videoId={}, rtmpUrl={}",
+                device.getDeviceType(),
+                requestDeviceSn,
+                physicalStreamSn,
+                aiStreamId,
+                videoId,
+                rtmpUrl
+        );
         LiveStreamSession session = new LiveStreamSession();
-        session.setDeviceSn(streamId);
+        session.setDeviceSn(physicalStreamSn);
         session.setUserId(currentUserId);
         session.setSessionStatus("ACTIVE");
         session.setQuality(
@@ -121,11 +129,11 @@ public class LiveStreamServiceImpl implements LiveStreamService {
 
         if (isDrone(device)) {
             log.info("[DJI] Calling live_start_push. gatewaySn={}, droneSn={}, payloadIndex={}, videoType={}, rtmpUrl={}",
-                    gatewaySn, streamId, payloadIndex, djiVideoType, rtmpUrl);
+                    gatewaySn, physicalStreamSn, payloadIndex, djiVideoType, rtmpUrl);
 
             djiLivestreamService.startPush(
                     gatewaySn,
-                    streamId,
+                    physicalStreamSn,
                     payloadIndex,
                     djiVideoType,
                     request.getVideoQuality() != null ? request.getVideoQuality() : 0,
@@ -156,7 +164,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
         AiServiceStreamRequest aiRequest = AiServiceStreamRequest.builder()
                 .uri(rtmpUrl)
                 .vectorMapUri(vectorMapUrl)
-                .streamId(streamId)
+                .streamId(aiStreamId)
                 .deviceId(device.getDeviceId())
                 .deviceName(device.getDeviceName() != null ? device.getDeviceName() : "")
                 .companyId(device.getCompany() != null ? device.getCompany().getCompanyId() : null)
@@ -219,15 +227,19 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                 .build();
     }
 
-    @Override
-    public StreamInfoResponse stopStream(StopStreamRequest request) {
+        @Override
+        public StreamInfoResponse stopStream(StopStreamRequest request) {
 
-        StreamSource streamSource = resolveStreamSourceForDeviceSn(request.getDeviceSn());
+        StreamSource streamSource =
+                resolveStreamSourceForDeviceSn(request.getDeviceSn());
+
+        String physicalStreamSn = streamSource.streamDeviceSn();
+        String aiStreamId = buildAiStreamId(physicalStreamSn);
 
         LiveStreamSession session =
                 liveStreamSessionRepository
                         .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                                streamSource.streamDeviceSn(),
+                                physicalStreamSn,
                                 "ACTIVE"
                         )
                         .orElseThrow(() ->
@@ -235,9 +247,12 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                         );
 
         try {
-            aiServiceClient.unregisterStream(streamSource.streamDeviceSn());
+                aiServiceClient.unregisterStream(aiStreamId);
         } catch (Exception e) {
-            throw new RuntimeException("AI service stream unregister failed: " + e.getMessage(), e);
+                throw new RuntimeException(
+                        "AI service stream unregister failed: " + e.getMessage(),
+                        e
+                );
         }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
@@ -516,6 +531,10 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                 || "4족보행 로봇".equals(type)
                 || "로봇".equals(type);
         }
+
+private String buildAiStreamId(String physicalStreamSn) {
+    return "robopilot-" + physicalStreamSn;
+}
 
     private StreamInfoResponse mapToResponse(LiveStreamSession session) {
         String hlsUrl = buildBackendHlsUrl(session.getId());
