@@ -4,7 +4,6 @@ import com.dji.sample.dto.request.DeviceRequest;
 import com.dji.sample.dto.response.DeviceResponse;
 import com.dji.sample.entity.Company;
 import com.dji.sample.entity.Device;
-import com.dji.sample.entity.LiveStreamSession;
 import com.dji.sample.entity.Mission;
 import com.dji.sample.entity.Site;
 import com.dji.sample.repository.CompanyRepository;
@@ -341,37 +340,6 @@ public class DeviceServiceImpl implements DeviceService {
         missionName = mission != null ? mission.getMissionName() : null;
     }
 }
-
-        if (missionId == null && device.getDeviceSn() != null) {
-            String redisMissionId = stringRedisTemplate.opsForValue()
-                    .get("robot:" + device.getDeviceSn() + ":missionId");
-
-            if (redisMissionId != null && !redisMissionId.isBlank()) {
-                try {
-                    missionId = UUID.fromString(redisMissionId);
-
-                    Mission mission = missionRepository
-                            .findByMissionIdAndDeletedAtIsNull(missionId)
-                            .orElse(null);
-
-                    missionName = mission != null ? mission.getMissionName() : null;
-
-                } catch (Exception e) {
-                    missionId = null;
-                    missionName = null;
-                }
-            }
-        }
-
-        if (missionId == null && device.getMissionId() != null) {
-            missionId = device.getMissionId();
-
-            Mission mission = missionRepository
-                    .findByMissionIdAndDeletedAtIsNull(missionId)
-                    .orElse(null);
-
-            missionName = mission != null ? mission.getMissionName() : null;
-        }
 
 
         String responseStatus = "offline";
