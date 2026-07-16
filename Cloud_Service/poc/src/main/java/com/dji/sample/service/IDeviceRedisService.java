@@ -24,6 +24,7 @@ public interface IDeviceRedisService {
     void clearRobotJobState(String deviceSn);
 
     void clearDeviceStatus(String deviceSn);
+    String getRobotJobId(String deviceSn);
 
     void setRobotJobState(
             String deviceSn,

@@ -60,174 +60,412 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     @Value("${app.public-base-url:http://localhost:6789}")
     private String publicBaseUrl;
 
-    @Override
-    public StartStreamResponse startStream(StartStreamRequest request) {
+   @Override
+public StartStreamResponse startStream(StartStreamRequest request) {
 
-        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
-                .orElseThrow(() -> new RuntimeException("Device not found"));
+    Device device =
+            deviceRepository
+                    .findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
+                    .orElseThrow(() ->
+                            new RuntimeException("Device not found")
+                    );
 
-        StreamSource streamSource = resolveStreamSource(request, device);
+    StreamSource streamSource =
+            resolveStreamSource(request, device);
 
-        boolean activeDeviceSessionExists =
-                liveStreamSessionRepository.existsByDeviceSnAndSessionStatus(
-                        streamSource.streamDeviceSn(),
-                        "ACTIVE"
-                );
+    String requestDeviceSn = request.getDeviceSn();
+    String physicalStreamSn = streamSource.streamDeviceSn();
+    String aiStreamId = buildAiStreamId(physicalStreamSn);
 
-        if (activeDeviceSessionExists) {
-            throw new RuntimeException("Device already has an active stream");
-        }
-
-        if (request.getMissionId() != null) {
-            boolean activeMissionSessionExists =
-                    liveStreamSessionRepository.existsByMissionIdAndSessionStatus(
-                            request.getMissionId(),
+    /*
+     * Prevent multiple ACTIVE DB sessions for the same physical stream.
+     */
+    boolean activeDeviceSessionExists =
+            liveStreamSessionRepository
+                    .existsByDeviceSnAndSessionStatus(
+                            physicalStreamSn,
                             "ACTIVE"
                     );
 
-            if (activeMissionSessionExists) {
-                throw new RuntimeException("Mission already has an active stream");
-            }
-        }
-
-        UUID currentUserId = getCurrentUserId();
-
-        String requestDeviceSn = request.getDeviceSn();
-
-        String physicalStreamSn = streamSource.streamDeviceSn();
-        String aiStreamId = buildAiStreamId(physicalStreamSn);
-
-        String videoId = streamSource.videoId();
-        String gatewaySn = streamSource.gatewaySn();
-        String payloadIndex = streamSource.payloadIndex();
-        String djiVideoType = streamSource.videoType();
-
-        String rtmpUrl = rtmpBaseUrl + "/streams/" + physicalStreamSn;
-        String vectorMapUrl = rtmpBaseUrl + "/streams/" + physicalStreamSn + "-vector";
-        log.info(
-                "Start stream deviceType={}, requestDeviceSn={}, physicalStreamSn={}, aiStreamId={}, videoId={}, rtmpUrl={}",
-                device.getDeviceType(),
-                requestDeviceSn,
-                physicalStreamSn,
-                aiStreamId,
-                videoId,
-                rtmpUrl
+    if (activeDeviceSessionExists) {
+        throw new RuntimeException(
+                "Device already has an active stream"
         );
-        LiveStreamSession session = new LiveStreamSession();
-        session.setDeviceSn(physicalStreamSn);
-        session.setUserId(currentUserId);
-        session.setSessionStatus("ACTIVE");
-        session.setQuality(
-                request.getVideoQuality() != null
-                        ? String.valueOf(request.getVideoQuality())
-                        : "HIGH"
-        );
-        session.setStartedAt(OffsetDateTime.now(ZoneOffset.UTC));
-        session.setLastHeartbeatAt(OffsetDateTime.now(ZoneOffset.UTC));
-        session.setMissionId(request.getMissionId());
-        session.setVideoId(videoId);
-
-        if (isDrone(device)) {
-            log.info("[DJI] Calling live_start_push. gatewaySn={}, droneSn={}, payloadIndex={}, videoType={}, rtmpUrl={}",
-                    gatewaySn, physicalStreamSn, payloadIndex, djiVideoType, rtmpUrl);
-
-            djiLivestreamService.startPush(
-                    gatewaySn,
-                    physicalStreamSn,
-                    payloadIndex,
-                    djiVideoType,
-                    request.getVideoQuality() != null ? request.getVideoQuality() : 0,
-                    rtmpUrl
-            );
-        }
-
-        if (isRobot(device)) {
-            String jobId = UUID.randomUUID().toString();
-
-            Map<String, Object> parameters = new HashMap<>();
-            parameters.put("camera_stream", rtmpUrl);
-            parameters.put("vector_map_stream", vectorMapUrl);
-            parameters.put("patrol_route", "TestforGO2");
-
-            Map<String, Object> robotJobPayload = new HashMap<>();
-            robotJobPayload.put("job_type", "robopilot_test/patrol_test");
-            robotJobPayload.put("parameters", parameters);
-
-            robotCommandService.createJob(
-                    requestDeviceSn,
-                    UUID.randomUUID().toString(),
-                    jobId,
-                    robotJobPayload
-            );
-        }
-
-        AiServiceStreamRequest aiRequest = AiServiceStreamRequest.builder()
-                .uri(rtmpUrl)
-                .vectorMapUri(vectorMapUrl)
-                .streamId(aiStreamId)
-                .deviceId(device.getDeviceId())
-                .deviceName(device.getDeviceName() != null ? device.getDeviceName() : "")
-                .companyId(device.getCompany() != null ? device.getCompany().getCompanyId() : null)
-                .companyName(device.getCompany() != null && device.getCompany().getName() != null
-                        ? device.getCompany().getName()
-                        : "")
-                .siteId(device.getSite() != null ? device.getSite().getSiteId() : null)
-                .siteName(device.getSite() != null && device.getSite().getName() != null
-                        ? device.getSite().getName()
-                        : "")
-                .missionId(request.getMissionId())
-                .missionName(request.getMissionId() != null ? request.getMissionId().toString() : "")
-                .userId(currentUserId)
-                .userName("admin")
-                .emails(List.of())
-                .sessionStartTime(session.getStartedAt())
-                .build();
-
-        String playbackUrl = aiServiceClient.registerStream(aiRequest);
-
-        if (playbackUrl == null || playbackUrl.isBlank()) {
-            throw new RuntimeException("AI service stream registration failed");
-        }
-
-        session.setPlaybackUrl(playbackUrl);
-
-        LiveStreamSession saved = liveStreamSessionRepository.save(session);
-
-        String hlsUrl = buildBackendHlsUrl(saved.getId());
-
-        device.setMissionId(request.getMissionId());
-        deviceRepository.save(device);
-
-        if (request.getMissionId() != null) {
-            deviceRedisService.setRobotJobState(
-                    requestDeviceSn,
-                    "stream-" + saved.getId(),
-                    "WORKING",
-                    request.getMissionId().toString()
-            );
-        }
-
-        webSocketPublisher.publishDashboardStatus(
-                requestDeviceSn,
-                "WORKING",
-                "stream-start"
-        );
-
-        return StartStreamResponse.builder()
-                .sessionId(saved.getId())
-                .streamId(saved.getId())
-                .id(saved.getId())
-                .playbackUrl(hlsUrl)
-                .sessionStatus(saved.getSessionStatus())
-                .status(saved.getSessionStatus())
-                .viewerCount(1)
-                .startTime(saved.getStartedAt())
-                .canStop(true)
-                .isSendHeartBeat(true)
-                .build();
     }
 
-        @Override
+    /*
+     * Prevent the same mission from being used by another ACTIVE session.
+     */
+    if (request.getMissionId() != null) {
+
+        boolean activeMissionSessionExists =
+                liveStreamSessionRepository
+                        .existsByMissionIdAndSessionStatus(
+                                request.getMissionId(),
+                                "ACTIVE"
+                        );
+
+        if (activeMissionSessionExists) {
+            throw new RuntimeException(
+                    "Mission already has an active stream"
+            );
+        }
+    }
+
+    UUID currentUserId = getCurrentUserId();
+
+    String videoId = streamSource.videoId();
+    String gatewaySn = streamSource.gatewaySn();
+    String payloadIndex = streamSource.payloadIndex();
+    String djiVideoType = streamSource.videoType();
+
+    String rtmpUrl =
+            rtmpBaseUrl + "/streams/" + physicalStreamSn;
+
+    String vectorMapUrl =
+            rtmpBaseUrl + "/streams/" +
+                    physicalStreamSn +
+                    "-vector";
+
+    log.info(
+            "Start stream deviceType={}, requestDeviceSn={}, physicalStreamSn={}, aiStreamId={}, videoId={}, rtmpUrl={}",
+            device.getDeviceType(),
+            requestDeviceSn,
+            physicalStreamSn,
+            aiStreamId,
+            videoId,
+            rtmpUrl
+    );
+
+    /*
+     * Prepare the database session.
+     * It is saved only after AI registration succeeds.
+     */
+    LiveStreamSession session = new LiveStreamSession();
+
+    session.setDeviceSn(physicalStreamSn);
+    session.setUserId(currentUserId);
+    session.setSessionStatus("ACTIVE");
+
+    session.setQuality(
+            request.getVideoQuality() != null
+                    ? String.valueOf(request.getVideoQuality())
+                    : "HIGH"
+    );
+
+    session.setStartedAt(
+            OffsetDateTime.now(ZoneOffset.UTC)
+    );
+
+    session.setLastHeartbeatAt(
+            OffsetDateTime.now(ZoneOffset.UTC)
+    );
+
+    session.setMissionId(request.getMissionId());
+    session.setVideoId(videoId);
+
+    /*
+     * DJI start path.
+     */
+    if (isDrone(device)) {
+
+        log.info(
+                "[DJI] Calling live_start_push. gatewaySn={}, droneSn={}, payloadIndex={}, videoType={}, rtmpUrl={}",
+                gatewaySn,
+                physicalStreamSn,
+                payloadIndex,
+                djiVideoType,
+                rtmpUrl
+        );
+
+        djiLivestreamService.startPush(
+                gatewaySn,
+                physicalStreamSn,
+                payloadIndex,
+                djiVideoType,
+                request.getVideoQuality() != null
+                        ? request.getVideoQuality()
+                        : 0,
+                rtmpUrl
+        );
+    }
+
+    /*
+     * GO2 robot start path.
+     *
+     * Store the real physical robot jobId before publishing create_job.
+     * Do not overwrite this jobId later with a livestream session ID.
+     */
+    if (isRobot(device)) {
+
+        String robotJobId =
+                UUID.randomUUID().toString();
+
+        String robotCommandId =
+                UUID.randomUUID().toString();
+
+        deviceRedisService.setRobotJobState(
+                requestDeviceSn,
+                robotJobId,
+                "STARTING",
+                request.getMissionId() != null
+                        ? request.getMissionId().toString()
+                        : null
+        );
+
+        Map<String, Object> parameters =
+                new HashMap<>();
+
+        parameters.put(
+                "camera_stream",
+                rtmpUrl
+        );
+
+        parameters.put(
+                "vector_map_stream",
+                vectorMapUrl
+        );
+
+        parameters.put(
+                "patrol_route",
+                "TestforGO2"
+        );
+
+        Map<String, Object> robotJobPayload =
+                new HashMap<>();
+
+        robotJobPayload.put(
+                "job_type",
+                "robopilot_test/patrol_test"
+        );
+
+        robotJobPayload.put(
+                "parameters",
+                parameters
+        );
+
+        try {
+            robotCommandService.createJob(
+                    requestDeviceSn,
+                    robotCommandId,
+                    robotJobId,
+                    robotJobPayload
+            );
+
+            log.info(
+                    "Robot create_job sent. deviceSn={}, commandId={}, jobId={}",
+                    requestDeviceSn,
+                    robotCommandId,
+                    robotJobId
+            );
+
+        } catch (Exception e) {
+
+            deviceRedisService.clearRobotJobState(
+                    requestDeviceSn
+            );
+
+            throw new RuntimeException(
+                    "Failed to start robot job: " +
+                            e.getMessage(),
+                    e
+            );
+        }
+    }
+
+    /*
+     * Register the incoming RTMP stream with the AI service.
+     */
+    AiServiceStreamRequest aiRequest =
+            AiServiceStreamRequest.builder()
+                    .uri(rtmpUrl)
+                    .vectorMapUri(vectorMapUrl)
+                    .streamId(aiStreamId)
+                    .deviceId(device.getDeviceId())
+                    .deviceName(
+                            device.getDeviceName() != null
+                                    ? device.getDeviceName()
+                                    : ""
+                    )
+                    .companyId(
+                            device.getCompany() != null
+                                    ? device.getCompany().getCompanyId()
+                                    : null
+                    )
+                    .companyName(
+                            device.getCompany() != null &&
+                                    device.getCompany().getName() != null
+                                    ? device.getCompany().getName()
+                                    : ""
+                    )
+                    .siteId(
+                            device.getSite() != null
+                                    ? device.getSite().getSiteId()
+                                    : null
+                    )
+                    .siteName(
+                            device.getSite() != null &&
+                                    device.getSite().getName() != null
+                                    ? device.getSite().getName()
+                                    : ""
+                    )
+                    .missionId(request.getMissionId())
+                    .missionName(
+                            request.getMissionId() != null
+                                    ? request.getMissionId().toString()
+                                    : ""
+                    )
+                    .userId(currentUserId)
+                    .userName("admin")
+                    .emails(List.of())
+                    .sessionStartTime(session.getStartedAt())
+                    .build();
+
+    String playbackUrl;
+
+    try {
+        playbackUrl =
+                aiServiceClient.registerStream(aiRequest);
+
+    } catch (Exception e) {
+
+        /*
+         * Roll back the robot job when AI registration fails.
+         */
+        if (isRobot(device)) {
+            try {
+                String robotJobId =
+                        deviceRedisService.getRobotJobId(
+                                requestDeviceSn
+                        );
+
+                if (robotJobId != null &&
+                        !robotJobId.isBlank()) {
+
+                    robotCommandService.cancelJob(
+                            requestDeviceSn,
+                            UUID.randomUUID().toString(),
+                            robotJobId
+                    );
+
+                } else {
+                    robotCommandService.cleanJob(
+                            requestDeviceSn
+                    );
+                }
+
+            } catch (Exception cleanupException) {
+                log.warn(
+                        "Robot rollback failed after AI registration error. deviceSn={}, error={}",
+                        requestDeviceSn,
+                        cleanupException.getMessage(),
+                        cleanupException
+                );
+            }
+
+            deviceRedisService.clearRobotJobState(
+                    requestDeviceSn
+            );
+        }
+
+        throw new RuntimeException(
+                "AI service stream registration failed: " +
+                        e.getMessage(),
+                e
+        );
+    }
+
+    if (playbackUrl == null ||
+            playbackUrl.isBlank()) {
+
+        if (isRobot(device)) {
+            try {
+                String robotJobId =
+                        deviceRedisService.getRobotJobId(
+                                requestDeviceSn
+                        );
+
+                if (robotJobId != null &&
+                        !robotJobId.isBlank()) {
+
+                    robotCommandService.cancelJob(
+                            requestDeviceSn,
+                            UUID.randomUUID().toString(),
+                            robotJobId
+                    );
+
+                } else {
+                    robotCommandService.cleanJob(
+                            requestDeviceSn
+                    );
+                }
+
+            } catch (Exception cleanupException) {
+                log.warn(
+                        "Robot rollback failed after blank AI playback URL. deviceSn={}, error={}",
+                        requestDeviceSn,
+                        cleanupException.getMessage(),
+                        cleanupException
+                );
+            }
+
+            deviceRedisService.clearRobotJobState(
+                    requestDeviceSn
+            );
+        }
+
+        throw new RuntimeException(
+                "AI service stream registration failed"
+        );
+    }
+
+    session.setPlaybackUrl(playbackUrl);
+
+    LiveStreamSession saved =
+            liveStreamSessionRepository.save(session);
+
+    String hlsUrl =
+            buildBackendHlsUrl(saved.getId());
+
+    /*
+     * Keep the Device table mission for compatibility.
+     * Dashboard response should still expose it only when an ACTIVE
+     * livestream session exists.
+     */
+    device.setMissionId(request.getMissionId());
+    deviceRepository.save(device);
+
+    /*
+     * Important:
+     * Do not call setRobotJobState() here using
+     * "stream-" + saved.getId().
+     *
+     * That would overwrite the real physical robot jobId.
+     * RobotJobStateHandler will update the job status from MQTT.
+     */
+
+    webSocketPublisher.publishDashboardStatus(
+            requestDeviceSn,
+            "WORKING",
+            "stream-start"
+    );
+
+    return StartStreamResponse.builder()
+            .sessionId(saved.getId())
+            .streamId(saved.getId())
+            .id(saved.getId())
+            .playbackUrl(hlsUrl)
+            .sessionStatus(saved.getSessionStatus())
+            .status(saved.getSessionStatus())
+            .viewerCount(1)
+            .startTime(saved.getStartedAt())
+            .canStop(true)
+            .isSendHeartBeat(true)
+            .build();
+}
+        
+    
+    @Override
         public StreamInfoResponse stopStream(StopStreamRequest request) {
 
         StreamSource streamSource =
@@ -242,62 +480,178 @@ public class LiveStreamServiceImpl implements LiveStreamService {
                                 physicalStreamSn,
                                 "ACTIVE"
                         )
+                        .orElse(null);
+
+        Device device =
+                deviceRepository.findByDeviceSnAndDeletedAtIsNull(
+                                request.getDeviceSn()
+                        )
                         .orElseThrow(() ->
-                                new RuntimeException("Active stream not found")
+                                new RuntimeException("Device not found")
                         );
 
+        /*
+        * Stop the physical robot job first.
+        *
+        * For DJI devices, this block is skipped.
+        */
+        if (isRobot(device)) {
+
+                String jobId =
+                        deviceRedisService.getRobotJobId(
+                                request.getDeviceSn()
+                        );
+
+                try {
+                if (jobId != null && !jobId.isBlank()) {
+
+                        robotCommandService.cancelJob(
+                                request.getDeviceSn(),
+                                UUID.randomUUID().toString(),
+                                jobId
+                        );
+
+                        log.info(
+                                "Robot cancel_job sent. deviceSn={}, jobId={}",
+                                request.getDeviceSn(),
+                                jobId
+                        );
+
+                } else {
+
+                        robotCommandService.cleanJob(
+                                request.getDeviceSn()
+                        );
+
+                        log.warn(
+                                "Robot jobId not found during stop. clean_job sent. deviceSn={}",
+                                request.getDeviceSn()
+                        );
+                }
+
+                } catch (Exception e) {
+                log.warn(
+                        "Robot job cleanup failed. deviceSn={}, jobId={}, error={}",
+                        request.getDeviceSn(),
+                        jobId,
+                        e.getMessage(),
+                        e
+                );
+                }
+        }
+
+        /*
+        * Always attempt AI cleanup, even when there is no ACTIVE DB session.
+        */
         try {
                 aiServiceClient.unregisterStream(aiStreamId);
+
+                log.info(
+                        "AI stream unregistered. deviceSn={}, aiStreamId={}",
+                        request.getDeviceSn(),
+                        aiStreamId
+                );
+
         } catch (Exception e) {
-                throw new RuntimeException(
-                        "AI service stream unregister failed: " + e.getMessage(),
+                log.warn(
+                        "AI service stream unregister failed. deviceSn={}, aiStreamId={}, error={}",
+                        request.getDeviceSn(),
+                        aiStreamId,
+                        e.getMessage(),
                         e
                 );
         }
 
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        LiveStreamSession saved = session;
 
-        session.setSessionStatus("STOPPED");
-        session.setStoppedAt(now);
+        /*
+        * Update DB and create history only when an ACTIVE session exists.
+        */
+        if (session != null) {
 
-        LiveStreamSession saved = liveStreamSessionRepository.save(session);
+                OffsetDateTime now =
+                        OffsetDateTime.now(ZoneOffset.UTC);
 
-        try {
-            CreateHistoryRequest historyRequest = new CreateHistoryRequest();
-            historyRequest.setDeviceSn(request.getDeviceSn());
-            historyRequest.setMissionId(saved.getMissionId());
-            historyRequest.setPlaybackUrl(saved.getPlaybackUrl());
-            historyRequest.setSessionId(saved.getId());
+                session.setSessionStatus("STOPPED");
+                session.setStoppedAt(now);
 
-            HistoryDetailResponse report = historyService.createHistory(historyRequest);
-            slackNotificationService.notifyAiDetectionReport(report);
+                saved =
+                        liveStreamSessionRepository.save(session);
 
-        } catch (Exception e) {
-            log.warn(
-                    "[History/Slack] Failed to create history or send report. deviceSn={}, error={}",
-                    request.getDeviceSn(),
-                    e.getMessage(),
-                    e
-            );
+                try {
+                CreateHistoryRequest historyRequest =
+                        new CreateHistoryRequest();
+
+                historyRequest.setDeviceSn(
+                        request.getDeviceSn()
+                );
+
+                historyRequest.setMissionId(
+                        saved.getMissionId()
+                );
+
+                historyRequest.setPlaybackUrl(
+                        saved.getPlaybackUrl()
+                );
+
+                historyRequest.setSessionId(
+                        saved.getId()
+                );
+
+                HistoryDetailResponse report =
+                        historyService.createHistory(
+                                historyRequest
+                        );
+
+                slackNotificationService
+                        .notifyAiDetectionReport(report);
+
+                } catch (Exception e) {
+                log.warn(
+                        "[History/Slack] Failed to create history or send report. deviceSn={}, error={}",
+                        request.getDeviceSn(),
+                        e.getMessage(),
+                        e
+                );
+                }
+
+        } else {
+                log.warn(
+                        "No ACTIVE livestream session found during stop. Cleanup still executed. deviceSn={}, physicalStreamSn={}",
+                        request.getDeviceSn(),
+                        physicalStreamSn
+                );
         }
 
-        Device device = deviceRepository.findByDeviceSnAndDeletedAtIsNull(request.getDeviceSn())
-                .orElseThrow(() -> new RuntimeException("Device not found"));
-
+        /*
+        * Always clear mission and Redis state.
+        */
         device.setMissionId(null);
         deviceRepository.save(device);
 
-        deviceRedisService.clearRobotJobState(request.getDeviceSn());
-        deviceRedisService.clearDeviceStatus(request.getDeviceSn());
+        deviceRedisService.clearRobotJobState(
+                request.getDeviceSn()
+        );
+
+        deviceRedisService.clearDeviceStatus(
+                request.getDeviceSn()
+        );
 
         webSocketPublisher.publishDashboardRefresh(
                 request.getDeviceSn(),
                 "stream-stop"
         );
 
-        return mapToResponse(saved);
-    }
+        if (saved != null) {
+                return mapToResponse(saved);
+        }
 
+        return StreamInfoResponse.builder()
+                .deviceSn(physicalStreamSn)
+                .sessionStatus("STOPPED")
+                .state("STOPPED")
+                .build();
+        }
     @Override
     public StreamInfoResponse getStreamInfo(String streamId) {
 

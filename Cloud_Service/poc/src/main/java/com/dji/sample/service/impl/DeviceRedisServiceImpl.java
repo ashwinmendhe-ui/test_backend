@@ -117,6 +117,11 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
     }
 
 
+    @Override
+    public String getRobotJobId(String deviceSn) {
+        return stringRedisTemplate.opsForValue()
+                .get("robot:" + deviceSn + ":jobId");
+    }
 
     @Override
     public void clearAllRobotJobState() {
