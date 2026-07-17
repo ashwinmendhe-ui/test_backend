@@ -2,10 +2,8 @@ package com.dji.sample.service.impl;
 
 import com.dji.sample.drone.service.DjiLivestreamService;
 import com.dji.sample.dto.request.AiServiceStreamRequest;
-import com.dji.sample.dto.request.CreateHistoryRequest;
 import com.dji.sample.dto.request.StartStreamRequest;
 import com.dji.sample.dto.request.StopStreamRequest;
-import com.dji.sample.dto.response.HistoryDetailResponse;
 import com.dji.sample.dto.response.StartStreamResponse;
 import com.dji.sample.dto.response.StreamInfoResponse;
 import com.dji.sample.dto.response.StreamStatusResponse;
@@ -18,11 +16,11 @@ import com.dji.sample.repository.SubDeviceRepository;
 import com.dji.sample.robot.service.IRobotCommandService;
 import com.dji.sample.security.CustomUserDetails;
 import com.dji.sample.service.DeviceWebSocketPublisher;
-import com.dji.sample.service.HistoryService;
 import com.dji.sample.service.IAiServiceClient;
 import com.dji.sample.service.IDeviceRedisService;
 import com.dji.sample.service.LiveStreamService;
-import com.dji.sample.service.SlackNotificationService;
+import com.dji.sample.service.StreamCleanupService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,8 +34,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -46,13 +42,12 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final DeviceRepository deviceRepository;
     private final IDeviceRedisService deviceRedisService;
-    private final HistoryService historyService;
     private final IAiServiceClient aiServiceClient;
     private final IRobotCommandService robotCommandService;
     private final DjiLivestreamService djiLivestreamService;
     private final DeviceWebSocketPublisher webSocketPublisher;
-    private final SlackNotificationService slackNotificationService;
     private final SubDeviceRepository subDeviceRepository;
+    private final StreamCleanupService streamCleanupService;
 
     @Value("${ai-service.rtmp-url}")
     private String rtmpBaseUrl;
@@ -465,194 +460,36 @@ public StartStreamResponse startStream(StartStreamRequest request) {
 }
         
     
-    @Override
-        public StreamInfoResponse stopStream(StopStreamRequest request) {
+   @Override
+public StreamInfoResponse stopStream(StopStreamRequest request) {
 
-        StreamSource streamSource =
-                resolveStreamSourceForDeviceSn(request.getDeviceSn());
+    StreamSource streamSource =
+            resolveStreamSourceForDeviceSn(request.getDeviceSn());
 
-        String physicalStreamSn = streamSource.streamDeviceSn();
-        String aiStreamId = buildAiStreamId(physicalStreamSn);
+    String physicalStreamSn =
+            streamSource.streamDeviceSn();
 
-        LiveStreamSession session =
-                liveStreamSessionRepository
-                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                                physicalStreamSn,
-                                "ACTIVE"
-                        )
-                        .orElse(null);
+    LiveStreamSession stoppedSession =
+            streamCleanupService.cleanupStream(
+                    request.getDeviceSn(),
+                    physicalStreamSn,
+                    "MANUAL_STOP",
+                    true
+            );
 
-        Device device =
-                deviceRepository.findByDeviceSnAndDeletedAtIsNull(
-                                request.getDeviceSn()
-                        )
-                        .orElseThrow(() ->
-                                new RuntimeException("Device not found")
-                        );
+    if (stoppedSession != null) {
+        return mapToResponse(stoppedSession);
+    }
 
-        /*
-        * Stop the physical robot job first.
-        *
-        * For DJI devices, this block is skipped.
-        */
-        if (isRobot(device)) {
-
-                String jobId =
-                        deviceRedisService.getRobotJobId(
-                                request.getDeviceSn()
-                        );
-
-                try {
-                if (jobId != null && !jobId.isBlank()) {
-
-                        robotCommandService.cancelJob(
-                                request.getDeviceSn(),
-                                UUID.randomUUID().toString(),
-                                jobId
-                        );
-
-                        log.info(
-                                "Robot cancel_job sent. deviceSn={}, jobId={}",
-                                request.getDeviceSn(),
-                                jobId
-                        );
-
-                } else {
-
-                        robotCommandService.cleanJob(
-                                request.getDeviceSn()
-                        );
-
-                        log.warn(
-                                "Robot jobId not found during stop. clean_job sent. deviceSn={}",
-                                request.getDeviceSn()
-                        );
-                }
-
-                } catch (Exception e) {
-                log.warn(
-                        "Robot job cleanup failed. deviceSn={}, jobId={}, error={}",
-                        request.getDeviceSn(),
-                        jobId,
-                        e.getMessage(),
-                        e
-                );
-                }
-        }
-
-        /*
-        * Always attempt AI cleanup, even when there is no ACTIVE DB session.
-        */
-        try {
-                aiServiceClient.unregisterStream(aiStreamId);
-
-                log.info(
-                        "AI stream unregistered. deviceSn={}, aiStreamId={}",
-                        request.getDeviceSn(),
-                        aiStreamId
-                );
-
-        } catch (Exception e) {
-                log.warn(
-                        "AI service stream unregister failed. deviceSn={}, aiStreamId={}, error={}",
-                        request.getDeviceSn(),
-                        aiStreamId,
-                        e.getMessage(),
-                        e
-                );
-        }
-
-        LiveStreamSession saved = session;
-
-        /*
-        * Update DB and create history only when an ACTIVE session exists.
-        */
-        if (session != null) {
-
-                OffsetDateTime now =
-                        OffsetDateTime.now(ZoneOffset.UTC);
-
-                session.setSessionStatus("STOPPED");
-                session.setStoppedAt(now);
-
-                saved =
-                        liveStreamSessionRepository.save(session);
-
-                try {
-                CreateHistoryRequest historyRequest =
-                        new CreateHistoryRequest();
-
-                historyRequest.setDeviceSn(
-                        request.getDeviceSn()
-                );
-
-                historyRequest.setMissionId(
-                        saved.getMissionId()
-                );
-
-                historyRequest.setPlaybackUrl(
-                        saved.getPlaybackUrl()
-                );
-
-                historyRequest.setSessionId(
-                        saved.getId()
-                );
-
-                HistoryDetailResponse report =
-                        historyService.createHistory(
-                                historyRequest
-                        );
-
-                slackNotificationService
-                        .notifyAiDetectionReport(report);
-
-                } catch (Exception e) {
-                log.warn(
-                        "[History/Slack] Failed to create history or send report. deviceSn={}, error={}",
-                        request.getDeviceSn(),
-                        e.getMessage(),
-                        e
-                );
-                }
-
-        } else {
-                log.warn(
-                        "No ACTIVE livestream session found during stop. Cleanup still executed. deviceSn={}, physicalStreamSn={}",
-                        request.getDeviceSn(),
-                        physicalStreamSn
-                );
-        }
-
-        /*
-        * Always clear mission and Redis state.
-        */
-        device.setMissionId(null);
-        deviceRepository.save(device);
-
-        deviceRedisService.clearRobotJobState(
-                request.getDeviceSn()
-        );
-
-        deviceRedisService.clearDeviceStatus(
-                request.getDeviceSn()
-        );
-
-        webSocketPublisher.publishDashboardRefresh(
-                request.getDeviceSn(),
-                "stream-stop"
-        );
-
-        if (saved != null) {
-                return mapToResponse(saved);
-        }
-
-        return StreamInfoResponse.builder()
-                .deviceSn(physicalStreamSn)
-                .sessionStatus("STOPPED")
-                .state("STOPPED")
-                .build();
-        }
-    @Override
+    return StreamInfoResponse.builder()
+            .deviceSn(physicalStreamSn)
+            .sessionStatus("STOPPED")
+            .state("STOPPED")
+            .build();
+}
+    
+    
+        @Override
     public StreamInfoResponse getStreamInfo(String streamId) {
 
         LiveStreamSession session;
