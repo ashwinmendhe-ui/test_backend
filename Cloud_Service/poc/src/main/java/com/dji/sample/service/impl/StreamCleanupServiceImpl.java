@@ -46,11 +46,11 @@ public class StreamCleanupServiceImpl implements StreamCleanupService {
     @Override
     @Transactional
     public LiveStreamSession cleanupStream(
-            String requestDeviceSn,
-            String physicalStreamSn,
-            String reason,
-            boolean createHistory
-    ) {
+                String requestDeviceSn,
+                String physicalStreamSn,
+                String reason,
+                boolean createHistory
+        ) {
 
         log.warn(
                 "[STREAM_CLEANUP] Started. requestDeviceSn={}, physicalStreamSn={}, reason={}, createHistory={}",
@@ -76,117 +76,122 @@ public class StreamCleanupServiceImpl implements StreamCleanupService {
                         .orElse(null);
 
         /*
-         * 1. Stop the physical robot job.
-         *
-         * This is harmless for non-robot devices because we only execute it
-         * when the resolved device is a robot.
-         */
-        if (device != null && isRobot(device)) {
-            cleanupRobotJob(requestDeviceSn, reason);
+        * 1. Stop the physical device runtime.
+        *
+        * Robot and DJI cleanup must be mutually exclusive.
+        */
+        if (device == null) {
+                log.warn(
+                        "[STREAM_CLEANUP] Device not found. Skipping physical device cleanup. requestDeviceSn={}, reason={}",
+                        requestDeviceSn,
+                        reason
+                );
+        } else if (isRobot(device)) {
+                cleanupRobotJob(requestDeviceSn, reason);
+        } else {
+                cleanupDroneStream(requestDeviceSn);
         }
-        cleanupDroneStream(requestDeviceSn);
-
 
         /*
-         * 2. Always try to remove the AI stream.
-         *
-         * This must run even when no ACTIVE DB session exists because the
-         * AI registration itself may be stale.
-         */
+        * 2. Always try to remove the AI stream.
+        *
+        * This must run even when no ACTIVE DB session exists because the
+        * AI registration itself may be stale.
+        */
         cleanupAiStream(aiStreamId, requestDeviceSn, reason);
 
         /*
-         * 3. Mark the DB session as stopped.
-         */
+        * 3. Mark the DB session as stopped.
+        */
         LiveStreamSession savedSession = session;
 
         if (session != null) {
-            OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+                OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-            session.setSessionStatus("STOPPED");
-            session.setStoppedAt(now);
+                session.setSessionStatus("STOPPED");
+                session.setStoppedAt(now);
 
-            savedSession = liveStreamSessionRepository.save(session);
+                savedSession = liveStreamSessionRepository.save(session);
 
-            log.info(
-                    "[STREAM_CLEANUP] Session marked STOPPED. sessionId={}, deviceSn={}, reason={}",
-                    savedSession.getId(),
-                    physicalStreamSn,
-                    reason
-            );
+                log.info(
+                        "[STREAM_CLEANUP] Session marked STOPPED. sessionId={}, deviceSn={}, reason={}",
+                        savedSession.getId(),
+                        physicalStreamSn,
+                        reason
+                );
         } else {
-            log.warn(
-                    "[STREAM_CLEANUP] No ACTIVE DB session found. AI and runtime cleanup still executed. physicalStreamSn={}, reason={}",
-                    physicalStreamSn,
-                    reason
-            );
+                log.warn(
+                        "[STREAM_CLEANUP] No ACTIVE DB session found. AI and runtime cleanup still executed. physicalStreamSn={}, reason={}",
+                        physicalStreamSn,
+                        reason
+                );
         }
 
         /*
-         * 4. Create report/history only when requested and when an active
-         * session was actually found.
-         */
+        * 4. Create report/history only when requested and when an active
+        * session was actually found.
+        */
         if (createHistory && savedSession != null) {
-            createHistoryAndNotify(
-                    requestDeviceSn,
-                    savedSession,
-                    reason
-            );
+                createHistoryAndNotify(
+                        requestDeviceSn,
+                        savedSession,
+                        reason
+                );
         }
 
         /*
-         * 5. Clear mission from Device.
-         */
+        * 5. Clear mission from Device.
+        */
         if (device != null) {
-            device.setMissionId(null);
-            deviceRepository.save(device);
+                device.setMissionId(null);
+                deviceRepository.save(device);
         }
 
         /*
-         * 6. Clear stream/job runtime state.
-         *
-         * Do not remove online:{deviceSn}; that key represents device health.
-         */
+        * 6. Clear stream/job runtime state.
+        *
+        * Do not remove online:{deviceSn}; that key represents device health.
+        */
         try {
-            deviceRedisService.clearRobotJobState(requestDeviceSn);
+                deviceRedisService.clearRobotJobState(requestDeviceSn);
         } catch (Exception exception) {
-            log.warn(
-                    "[STREAM_CLEANUP] Failed to clear robot job state. deviceSn={}, reason={}, error={}",
-                    requestDeviceSn,
-                    reason,
-                    exception.getMessage(),
-                    exception
-            );
+                log.warn(
+                        "[STREAM_CLEANUP] Failed to clear robot job state. deviceSn={}, reason={}, error={}",
+                        requestDeviceSn,
+                        reason,
+                        exception.getMessage(),
+                        exception
+                );
         }
 
         try {
-            deviceRedisService.clearDeviceStatus(requestDeviceSn);
+                deviceRedisService.clearDeviceStatus(requestDeviceSn);
         } catch (Exception exception) {
-            log.warn(
-                    "[STREAM_CLEANUP] Failed to clear device status. deviceSn={}, reason={}, error={}",
-                    requestDeviceSn,
-                    reason,
-                    exception.getMessage(),
-                    exception
-            );
+                log.warn(
+                        "[STREAM_CLEANUP] Failed to clear device status. deviceSn={}, reason={}, error={}",
+                        requestDeviceSn,
+                        reason,
+                        exception.getMessage(),
+                        exception
+                );
         }
 
         /*
-         * 7. Refresh dashboard state.
-         */
+        * 7. Refresh dashboard state.
+        */
         try {
-            webSocketPublisher.publishDashboardRefresh(
-                    requestDeviceSn,
-                    "stream-cleanup-" + reason.toLowerCase()
-            );
+                webSocketPublisher.publishDashboardRefresh(
+                        requestDeviceSn,
+                        "stream-cleanup-" + reason.toLowerCase()
+                );
         } catch (Exception exception) {
-            log.warn(
-                    "[STREAM_CLEANUP] Dashboard refresh failed. deviceSn={}, reason={}, error={}",
-                    requestDeviceSn,
-                    reason,
-                    exception.getMessage(),
-                    exception
-            );
+                log.warn(
+                        "[STREAM_CLEANUP] Dashboard refresh failed. deviceSn={}, reason={}, error={}",
+                        requestDeviceSn,
+                        reason,
+                        exception.getMessage(),
+                        exception
+                );
         }
 
         log.warn(
@@ -198,155 +203,154 @@ public class StreamCleanupServiceImpl implements StreamCleanupService {
         );
 
         return savedSession;
-    }
+        }
+        private void cleanupRobotJob(
+                String deviceSn,
+                String reason
+        ) {
+                String jobId = null;
 
-    private void cleanupRobotJob(
-            String deviceSn,
-            String reason
-    ) {
-        String jobId = null;
+                try {
+                jobId = deviceRedisService.getRobotJobId(deviceSn);
 
-        try {
-            jobId = deviceRedisService.getRobotJobId(deviceSn);
+                if (jobId != null && !jobId.isBlank()) {
+                        robotCommandService.cancelJob(
+                                deviceSn,
+                                UUID.randomUUID().toString(),
+                                jobId
+                        );
 
-            if (jobId != null && !jobId.isBlank()) {
-                robotCommandService.cancelJob(
-                        deviceSn,
-                        UUID.randomUUID().toString(),
-                        jobId
-                );
+                        log.info(
+                                "[STREAM_CLEANUP] Robot cancel_job sent. deviceSn={}, jobId={}, reason={}",
+                                deviceSn,
+                                jobId,
+                                reason
+                        );
+                } else {
+                        robotCommandService.cleanJob(deviceSn);
 
-                log.info(
-                        "[STREAM_CLEANUP] Robot cancel_job sent. deviceSn={}, jobId={}, reason={}",
+                        log.warn(
+                                "[STREAM_CLEANUP] Robot jobId missing; clean_job sent. deviceSn={}, reason={}",
+                                deviceSn,
+                                reason
+                        );
+                }
+                } catch (Exception exception) {
+                log.warn(
+                        "[STREAM_CLEANUP] Robot job cleanup failed. deviceSn={}, jobId={}, reason={}, error={}",
                         deviceSn,
                         jobId,
-                        reason
+                        reason,
+                        exception.getMessage(),
+                        exception
                 );
-            } else {
-                robotCommandService.cleanJob(deviceSn);
-
-                log.warn(
-                        "[STREAM_CLEANUP] Robot jobId missing; clean_job sent. deviceSn={}, reason={}",
-                        deviceSn,
-                        reason
-                );
-            }
-        } catch (Exception exception) {
-            log.warn(
-                    "[STREAM_CLEANUP] Robot job cleanup failed. deviceSn={}, jobId={}, reason={}, error={}",
-                    deviceSn,
-                    jobId,
-                    reason,
-                    exception.getMessage(),
-                    exception
-            );
+                }
         }
-    }
 
-    private void cleanupAiStream(
-            String aiStreamId,
-            String deviceSn,
-            String reason
-    ) {
-        try {
-            AiServiceStreamResponse response =
-                    aiServiceClient.unregisterStream(aiStreamId);
+        private void cleanupAiStream(
+                String aiStreamId,
+                String deviceSn,
+                String reason
+        ) {
+                try {
+                AiServiceStreamResponse response =
+                        aiServiceClient.unregisterStream(aiStreamId);
 
-            if (response == null) {
-                log.warn(
-                        "[STREAM_CLEANUP] AI unregister returned null. deviceSn={}, aiStreamId={}, reason={}",
-                        deviceSn,
-                        aiStreamId,
-                        reason
-                );
-                return;
-            }
+                if (response == null) {
+                        log.warn(
+                                "[STREAM_CLEANUP] AI unregister returned null. deviceSn={}, aiStreamId={}, reason={}",
+                                deviceSn,
+                                aiStreamId,
+                                reason
+                        );
+                        return;
+                }
 
-            /*
-             * AiServiceClientImpl currently catches HTTP errors and returns an
-             * error response instead of throwing. Therefore, inspect the
-             * returned response as well as catching exceptions.
-             */
-            if ("error".equalsIgnoreCase(response.getState())) {
-                log.warn(
-                        "[STREAM_CLEANUP] AI unregister returned error. deviceSn={}, aiStreamId={}, reason={}, message={}",
+                /*
+                * AiServiceClientImpl currently catches HTTP errors and returns an
+                * error response instead of throwing. Therefore, inspect the
+                * returned response as well as catching exceptions.
+                */
+                if ("error".equalsIgnoreCase(response.getState())) {
+                        log.warn(
+                                "[STREAM_CLEANUP] AI unregister returned error. deviceSn={}, aiStreamId={}, reason={}, message={}",
+                                deviceSn,
+                                aiStreamId,
+                                reason,
+                                response.getMessage()
+                        );
+                        return;
+                }
+
+                log.info(
+                        "[STREAM_CLEANUP] AI stream unregistered. deviceSn={}, aiStreamId={}, reason={}, response={}",
                         deviceSn,
                         aiStreamId,
                         reason,
-                        response.getMessage()
+                        response
                 );
-                return;
-            }
 
-            log.info(
-                    "[STREAM_CLEANUP] AI stream unregistered. deviceSn={}, aiStreamId={}, reason={}, response={}",
-                    deviceSn,
-                    aiStreamId,
-                    reason,
-                    response
-            );
-
-        } catch (Exception exception) {
-            log.warn(
-                    "[STREAM_CLEANUP] AI unregister failed. deviceSn={}, aiStreamId={}, reason={}, error={}",
-                    deviceSn,
-                    aiStreamId,
-                    reason,
-                    exception.getMessage(),
-                    exception
-            );
+                } catch (Exception exception) {
+                log.warn(
+                        "[STREAM_CLEANUP] AI unregister failed. deviceSn={}, aiStreamId={}, reason={}, error={}",
+                        deviceSn,
+                        aiStreamId,
+                        reason,
+                        exception.getMessage(),
+                        exception
+                );
+                }
         }
-    }
 
-    private void createHistoryAndNotify(
-            String requestDeviceSn,
-            LiveStreamSession session,
-            String reason
-    ) {
-        try {
-            CreateHistoryRequest historyRequest =
-                    new CreateHistoryRequest();
+        private void createHistoryAndNotify(
+                String requestDeviceSn,
+                LiveStreamSession session,
+                String reason
+        ) {
+                try {
+                CreateHistoryRequest historyRequest =
+                        new CreateHistoryRequest();
 
-            historyRequest.setDeviceSn(requestDeviceSn);
-            historyRequest.setMissionId(session.getMissionId());
-            historyRequest.setPlaybackUrl(session.getPlaybackUrl());
-            historyRequest.setSessionId(session.getId());
+                historyRequest.setDeviceSn(requestDeviceSn);
+                historyRequest.setMissionId(session.getMissionId());
+                historyRequest.setPlaybackUrl(session.getPlaybackUrl());
+                historyRequest.setSessionId(session.getId());
 
-            HistoryDetailResponse report =
-                    historyService.createHistory(historyRequest);
+                HistoryDetailResponse report =
+                        historyService.createHistory(historyRequest);
 
-            slackNotificationService.notifyAiDetectionReport(report);
+                slackNotificationService.notifyAiDetectionReport(report);
 
-            log.info(
-                    "[STREAM_CLEANUP] History/report created. sessionId={}, deviceSn={}, reason={}",
-                    session.getId(),
-                    requestDeviceSn,
-                    reason
-            );
+                log.info(
+                        "[STREAM_CLEANUP] History/report created. sessionId={}, deviceSn={}, reason={}",
+                        session.getId(),
+                        requestDeviceSn,
+                        reason
+                );
 
-        } catch (Exception exception) {
-            log.warn(
-                    "[STREAM_CLEANUP] History or Slack notification failed. sessionId={}, deviceSn={}, reason={}, error={}",
-                    session.getId(),
-                    requestDeviceSn,
-                    reason,
-                    exception.getMessage(),
-                    exception
-            );
+                } catch (Exception exception) {
+                log.warn(
+                        "[STREAM_CLEANUP] History or Slack notification failed. sessionId={}, deviceSn={}, reason={}, error={}",
+                        session.getId(),
+                        requestDeviceSn,
+                        reason,
+                        exception.getMessage(),
+                        exception
+                );
+                }
         }
-    }
 
-    private String buildAiStreamId(String physicalStreamSn) {
-        return "robopilot-" + physicalStreamSn;
-    }
+        private String buildAiStreamId(String physicalStreamSn) {
+                return "robopilot-" + physicalStreamSn;
+        }
 
-    private boolean isRobot(Device device) {
-        String type = device.getDeviceType();
+        private boolean isRobot(Device device) {
+                String type = device.getDeviceType();
 
-        return "Robot".equalsIgnoreCase(type)
-                || "4족보행 로봇".equals(type)
-                || "로봇".equals(type);
-    }
+                return "Robot".equalsIgnoreCase(type)
+                        || "4족보행 로봇".equals(type)
+                        || "로봇".equals(type);
+        }
 
 
     private void cleanupDroneStream(String requestDeviceSn) {
