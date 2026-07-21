@@ -139,7 +139,6 @@ public class LocalMqttMessageHandler {
         String telemetryJson = objectMapper.writeValueAsString(telemetry);
 
         deviceRedisService.setDeviceOnlineBySn(deviceSn, 120);
-        deviceRedisService.setDeviceStatus(deviceSn, "online");
         deviceRedisService.setDeviceTelemetry(deviceSn, telemetryJson);
 
         webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-osd");

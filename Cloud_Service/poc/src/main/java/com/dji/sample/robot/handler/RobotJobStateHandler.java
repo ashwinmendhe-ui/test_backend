@@ -125,20 +125,32 @@ public class RobotJobStateHandler {
 
                     return;
                 }
-                Duration ttl = Duration.ofMinutes(10);
+                /*
+            * An active robot job can run much longer than 10 minutes, while the robot
+            * may publish RUNNING only when the state changes. Therefore these runtime
+            * keys must remain until an explicit terminal state or stream cleanup clears
+            * them.
+            */
+            if (jobId != null) {
+                stringRedisTemplate.opsForValue().set(jobKey, jobId);
+            }
 
-                if (jobId != null) {
-                    stringRedisTemplate.opsForValue().set(jobKey, jobId, ttl);
-                }
+            if (status != null) {
+                stringRedisTemplate.opsForValue().set(localStatusKey, status);
+                stringRedisTemplate.opsForValue().set(prodStatusKey, status);
+            }
 
-                if (status != null) {
-                    stringRedisTemplate.opsForValue().set(localStatusKey, status, ttl);
-                    stringRedisTemplate.opsForValue().set(prodStatusKey, status, ttl);
-                }
+            if (missionId != null) {
+                stringRedisTemplate.opsForValue().set(missionKey, missionId);
+            }
 
-                if (missionId != null) {
-                    stringRedisTemplate.opsForValue().set(missionKey, missionId, ttl);
-                }
+            log.info(
+                    "Active robot job state stored without expiry. deviceSn={}, jobId={}, status={}, missionId={}",
+                    deviceSn,
+                    jobId,
+                    status,
+                    missionId
+            );
             }
             webSocketPublisher.publishStatus(deviceSn, jobState);
             webSocketPublisher.publishDashboardStatus(deviceSn, status, "robot-job-state");
