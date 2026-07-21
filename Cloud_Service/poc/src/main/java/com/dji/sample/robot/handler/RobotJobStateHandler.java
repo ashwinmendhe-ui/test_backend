@@ -81,16 +81,50 @@ public class RobotJobStateHandler {
                         .isPresent();
 
                 if (!hasActiveSession) {
-                    stringRedisTemplate.delete(jobKey);
+
+                    /*
+                    * Preserve the robot-reported active jobId so orphan cleanup can
+                    * cancel the physical robot job even when the DB session is no
+                    * longer ACTIVE.
+                    *
+                    * Do not preserve working/status/mission values because those
+                    * would make the dashboard incorrectly remain in working state.
+                    */
+                    Duration orphanJobTtl = Duration.ofMinutes(10);
+
+                    if (jobId != null
+                            && status != null
+                            && "RUNNING".equalsIgnoreCase(status)) {
+
+                        stringRedisTemplate.opsForValue().set(
+                                jobKey,
+                                jobId,
+                                orphanJobTtl
+                        );
+
+                        log.warn(
+                                "Preserved orphan robot jobId for cleanup. deviceSn={}, jobId={}, status={}",
+                                deviceSn,
+                                jobId,
+                                status
+                        );
+                    } else {
+                        stringRedisTemplate.delete(jobKey);
+                    }
+
                     stringRedisTemplate.delete(localStatusKey);
                     stringRedisTemplate.delete(prodStatusKey);
                     stringRedisTemplate.delete(missionKey);
 
-                    log.warn("Ignoring stale robot job state because no ACTIVE session exists. deviceSn={}, jobId={}, status={}",
-                            deviceSn, jobId, status);
+                    log.warn(
+                            "Ignoring robot working state because no ACTIVE session exists. deviceSn={}, jobId={}, status={}",
+                            deviceSn,
+                            jobId,
+                            status
+                    );
+
                     return;
                 }
-
                 Duration ttl = Duration.ofMinutes(10);
 
                 if (jobId != null) {
