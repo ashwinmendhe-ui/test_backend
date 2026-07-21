@@ -18,10 +18,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.dji.sample.drone.model.StreamSource;
+import com.dji.sample.drone.service.StreamSourceResolver;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import com.dji.sample.drone.service.DjiLivestreamService;
 
 @Slf4j
 @Service
@@ -36,6 +39,9 @@ public class StreamCleanupServiceImpl implements StreamCleanupService {
     private final HistoryService historyService;
     private final SlackNotificationService slackNotificationService;
     private final DeviceWebSocketPublisher webSocketPublisher;
+    private final DjiLivestreamService djiLivestreamService;
+    private final StreamSourceResolver streamSourceResolver;
+    
 
     @Override
     @Transactional
@@ -78,6 +84,8 @@ public class StreamCleanupServiceImpl implements StreamCleanupService {
         if (device != null && isRobot(device)) {
             cleanupRobotJob(requestDeviceSn, reason);
         }
+        cleanupDroneStream(requestDeviceSn);
+
 
         /*
          * 2. Always try to remove the AI stream.
@@ -339,4 +347,38 @@ public class StreamCleanupServiceImpl implements StreamCleanupService {
                 || "4족보행 로봇".equals(type)
                 || "로봇".equals(type);
     }
+
+
+    private void cleanupDroneStream(String requestDeviceSn) {
+
+        try {
+
+                StreamSource streamSource =
+                        streamSourceResolver.resolveForDeviceSn(requestDeviceSn);
+
+                log.info(
+                        "[DJI] Calling live_stop_push. gatewaySn={}, droneSn={}, payloadIndex={}, videoType={}",
+                        streamSource.gatewaySn(),
+                        streamSource.droneSn(),
+                        streamSource.payloadIndex(),
+                        streamSource.videoType()
+                );
+
+                djiLivestreamService.stopPush(
+                        streamSource.gatewaySn(),
+                        streamSource.droneSn(),
+                        streamSource.payloadIndex(),
+                        streamSource.videoType()
+                );
+
+        } catch (Exception e) {
+
+                log.warn(
+                        "[DJI] Failed to stop livestream. deviceSn={}, error={}",
+                        requestDeviceSn,
+                        e.getMessage(),
+                        e
+                );
+        }
+        }
 }

@@ -3,6 +3,7 @@ package com.dji.sample.drone.service;
 import com.dji.sdk.cloudapi.device.PayloadIndex;
 import com.dji.sdk.cloudapi.device.VideoId;
 import com.dji.sdk.cloudapi.livestream.LiveStartPushRequest;
+import com.dji.sdk.cloudapi.livestream.LiveStopPushRequest;
 import com.dji.sdk.cloudapi.livestream.LivestreamRtmpUrl;
 import com.dji.sdk.cloudapi.livestream.LiveStreamMethodEnum;
 import com.dji.sdk.cloudapi.livestream.UrlTypeEnum;
@@ -82,4 +83,50 @@ public class DjiLivestreamService {
             throw new RuntimeException("DJI live_start_push failed: " + response);
         }
     }
+
+    public void stopPush(
+                String gatewaySn,
+                String droneSn,
+                String payloadIndex,
+                String videoType
+        ) {
+        VideoId videoId = new VideoId()
+                .setDroneSn(droneSn)
+                .setPayloadIndex(new PayloadIndex(payloadIndex))
+                .setVideoType(VideoTypeEnum.find(videoType));
+
+        LiveStopPushRequest request = new LiveStopPushRequest()
+                .setVideoId(videoId);
+
+        log.info(
+                "[DJI][LIVE_STOP_PUSH] gatewaySn={}, droneSn={}, videoId={}",
+                gatewaySn,
+                droneSn,
+                videoId
+        );
+
+        TopicServicesResponse<ServicesReplyData<String>> response =
+                servicesPublish.publish(
+                        new TypeReference<String>() {},
+                        gatewaySn,
+                        LiveStreamMethodEnum.LIVE_STOP_PUSH.getMethod(),
+                        request,
+                        DEFAULT_TIMEOUT
+                );
+
+        log.info(
+                "[DJI][LIVE_STOP_PUSH] response={}",
+                response
+        );
+
+        if (response == null
+                || response.getData() == null
+                || response.getData().getResult() == null
+                || !response.getData().getResult().isSuccess()) {
+
+                throw new RuntimeException(
+                        "DJI live_stop_push failed: " + response
+                );
+        }
+        }
 }

@@ -9,10 +9,8 @@ import com.dji.sample.dto.response.StreamInfoResponse;
 import com.dji.sample.dto.response.StreamStatusResponse;
 import com.dji.sample.entity.Device;
 import com.dji.sample.entity.LiveStreamSession;
-import com.dji.sample.entity.SubDevice;
 import com.dji.sample.repository.DeviceRepository;
 import com.dji.sample.repository.LiveStreamSessionRepository;
-import com.dji.sample.repository.SubDeviceRepository;
 import com.dji.sample.robot.service.IRobotCommandService;
 import com.dji.sample.security.CustomUserDetails;
 import com.dji.sample.service.DeviceWebSocketPublisher;
@@ -27,6 +25,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import com.dji.sample.drone.model.StreamSource;
+import com.dji.sample.drone.service.StreamSourceResolver;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -46,8 +46,9 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final IRobotCommandService robotCommandService;
     private final DjiLivestreamService djiLivestreamService;
     private final DeviceWebSocketPublisher webSocketPublisher;
-    private final SubDeviceRepository subDeviceRepository;
     private final StreamCleanupService streamCleanupService;
+    private final StreamSourceResolver streamSourceResolver;
+    
 
     @Value("${ai-service.rtmp-url}")
     private String rtmpBaseUrl;
@@ -66,7 +67,7 @@ public StartStreamResponse startStream(StartStreamRequest request) {
                     );
 
     StreamSource streamSource =
-            resolveStreamSource(request, device);
+        streamSourceResolver.resolve(request, device);
 
     String requestDeviceSn = request.getDeviceSn();
     String physicalStreamSn = streamSource.streamDeviceSn();
@@ -464,7 +465,9 @@ public StartStreamResponse startStream(StartStreamRequest request) {
 public StreamInfoResponse stopStream(StopStreamRequest request) {
 
     StreamSource streamSource =
-            resolveStreamSourceForDeviceSn(request.getDeviceSn());
+        streamSourceResolver.resolveForDeviceSn(
+                request.getDeviceSn()
+        );
 
     String physicalStreamSn =
             streamSource.streamDeviceSn();
@@ -505,7 +508,8 @@ public StreamInfoResponse stopStream(StopStreamRequest request) {
 
         } catch (IllegalArgumentException e) {
 
-            StreamSource streamSource = resolveStreamSourceForDeviceSn(streamId);
+            StreamSource streamSource =
+                streamSourceResolver.resolveForDeviceSn(streamId);
 
             session = liveStreamSessionRepository
                     .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
@@ -540,7 +544,8 @@ public StreamInfoResponse stopStream(StopStreamRequest request) {
     @Override
     public StreamStatusResponse getStreamStatus(String deviceSn) {
 
-        StreamSource streamSource = resolveStreamSourceForDeviceSn(deviceSn);
+        StreamSource streamSource =
+                streamSourceResolver.resolveForDeviceSn(deviceSn);
 
         var activeSession =
                 liveStreamSessionRepository
@@ -584,131 +589,6 @@ public StreamInfoResponse stopStream(StopStreamRequest request) {
     private String buildBackendHlsUrl(UUID sessionId) {
         return publicBaseUrl + "/api/v1/live/hls/" + sessionId + "/index.m3u8";    }
 
-    private StreamSource resolveStreamSource(StartStreamRequest request, Device device) {
-        String requestDeviceSn = request.getDeviceSn();
-
-        if (!isDrone(device)) {
-            return new StreamSource(
-                    requestDeviceSn,
-                    requestDeviceSn,
-                    requestDeviceSn,
-                    requestDeviceSn,
-                    "99-0-0",
-                    "normal",
-                    requestDeviceSn
-            );
-        }
-
-        
-
-        SubDevice subDevice = subDeviceRepository
-                .findFirstByDeviceSnAndDeletedAtIsNullOrderByIdAsc(requestDeviceSn)
-                .orElse(null);
-
-        log.info("[LIVE][SUB_DEVICE] requestDeviceSn={}, found={}, subSn={}",
-                requestDeviceSn,
-                subDevice != null,
-                subDevice != null ? subDevice.getSn() : null);
-
-        String streamDeviceSn = requestDeviceSn;
-        String gatewaySn = requestDeviceSn;
-        String payloadIndex = resolvePayloadIndexFromRequest(request);
-        String videoType = resolveDjiVideoTypeFromRequest(request);
-
-        if (subDevice != null && subDevice.getSn() != null && !subDevice.getSn().isBlank()) {
-            streamDeviceSn = subDevice.getSn();
-
-            Integer type = subDevice.getType() != null ? subDevice.getType() : 99;
-            Integer subType = subDevice.getSubType() != null ? subDevice.getSubType() : 0;
-
-            payloadIndex = type + "-" + subType + "-0";
-        } else if (request.getVideoId() != null
-                && request.getVideoId().getDroneSn() != null
-                && !request.getVideoId().getDroneSn().isBlank()) {
-            streamDeviceSn = request.getVideoId().getDroneSn();
-        }
-
-        String videoId = streamDeviceSn + "/" + payloadIndex + "/" + videoType + "-0";
-
-        log.info("[LIVE][STREAM_SOURCE] requestDeviceSn={}, streamDeviceSn={}, gatewaySn={}, payloadIndex={}, videoType={}, videoId={}",
-                requestDeviceSn, streamDeviceSn, gatewaySn, payloadIndex, videoType, videoId);
-
-        return new StreamSource(
-                requestDeviceSn,
-                streamDeviceSn,
-                gatewaySn,
-                streamDeviceSn,
-                payloadIndex,
-                videoType,
-                videoId
-        );
-    }
-
-    private StreamSource resolveStreamSourceForDeviceSn(String deviceSn) {
-        SubDevice subDevice = subDeviceRepository
-                .findFirstByDeviceSnAndDeletedAtIsNullOrderByIdAsc(deviceSn)
-                .orElse(null);
-
-        if (subDevice != null && subDevice.getSn() != null && !subDevice.getSn().isBlank()) {
-            Integer type = subDevice.getType() != null ? subDevice.getType() : 99;
-            Integer subType = subDevice.getSubType() != null ? subDevice.getSubType() : 0;
-            String payloadIndex = type + "-" + subType + "-0";
-            String videoType = "normal";
-            String videoId = subDevice.getSn() + "/" + payloadIndex + "/" + videoType + "-0";
-
-            return new StreamSource(
-                    deviceSn,
-                    subDevice.getSn(),
-                    deviceSn,
-                    subDevice.getSn(),
-                    payloadIndex,
-                    videoType,
-                    videoId
-            );
-        }
-
-        return new StreamSource(
-                deviceSn,
-                deviceSn,
-                deviceSn,
-                deviceSn,
-                "99-0-0",
-                "normal",
-                deviceSn
-        );
-    }
-
-    private String resolvePayloadIndexFromRequest(StartStreamRequest request) {
-        if (request.getVideoId() != null && request.getVideoId().getPayloadIndex() != null) {
-            return request.getVideoId().getPayloadIndex().getType()
-                    + "-"
-                    + request.getVideoId().getPayloadIndex().getSubType()
-                    + "-"
-                    + request.getVideoId().getPayloadIndex().getPosition();
-        }
-
-        return "99-0-0";
-    }
-
-    private String resolveDjiVideoTypeFromRequest(StartStreamRequest request) {
-        if (request.getVideoId() != null
-                && request.getVideoId().getVideoType() != null
-                && !request.getVideoId().getVideoType().isBlank()) {
-            return request.getVideoId().getVideoType();
-        }
-
-        return "normal";
-    }
-
-    private record StreamSource(
-            String requestDeviceSn,
-            String streamDeviceSn,
-            String gatewaySn,
-            String droneSn,
-            String payloadIndex,
-            String videoType,
-            String videoId
-    ) {}
 
     private boolean isDrone(Device device) {
         String type = device.getDeviceType();
