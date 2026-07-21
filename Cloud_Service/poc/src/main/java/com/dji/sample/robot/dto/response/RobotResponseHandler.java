@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import java.time.Duration;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -12,6 +15,7 @@ import org.springframework.stereotype.Component;
 public class RobotResponseHandler {
 
     private final ObjectMapper objectMapper;
+    private final StringRedisTemplate stringRedisTemplate;
 
     public void handle(String deviceSn, String payload) {
         try {
@@ -35,6 +39,35 @@ public class RobotResponseHandler {
                     jobId,
                     jobStatus
             );
+
+            Set<String> activeJobReasons = Set.of(
+                    "JOB_ID_MISMATCH",
+                    "JOB_ALREADY_EXISTS"
+            );
+
+            if ("rejected".equalsIgnoreCase(result)
+                    && reason != null
+                    && activeJobReasons.contains(reason.toUpperCase())
+                    && jobId != null
+                    && jobStatus != null
+                    && "RUNNING".equalsIgnoreCase(jobStatus)) {
+
+                String jobKey = "robot:" + deviceSn + ":jobId";
+
+                stringRedisTemplate.opsForValue().set(
+                        jobKey,
+                        jobId,
+                        Duration.ofMinutes(10)
+                );
+
+                log.warn(
+                        "Robot active jobId synchronized from command response. deviceSn={}, reason={}, jobId={}, jobStatus={}",
+                        deviceSn,
+                        reason,
+                        jobId,
+                        jobStatus
+                );
+            }
 
             if ("rejected".equalsIgnoreCase(result)) {
                 log.warn(
