@@ -27,10 +27,20 @@ public class RobotJobStateHandler {
             JsonNode root = objectMapper.readTree(payload);
             JsonNode data = root.has("data") ? root.path("data") : root;
 
-            String jobId = textOrNull(data, "job_id");
-            String status = textOrNull(data, "status");
-            String missionId = textOrNull(data, "mission_id");
+            String jobId = firstText(data, "job_id", "jobId");
+            String status = firstText(data, "status", "job_status", "jobStatus");
+            String missionId = firstText(data, "mission_id", "missionId");
             String message = textOrNull(data, "message");
+
+            log.info(
+                        "Parsed robot job state. deviceSn={}, jobId={}, status={}, missionId={}, rawData={}",
+                        deviceSn,
+                        jobId,
+                        status,
+                        missionId,
+                        data
+                );
+
 
             RobotJobStateData jobState = new RobotJobStateData();
             jobState.setJobId(jobId);
@@ -38,6 +48,7 @@ public class RobotJobStateHandler {
             jobState.setMissionId(missionId);
             jobState.setMessage(message);
 
+            
             String jobKey = "robot:" + deviceSn + ":jobId";
             String localStatusKey = "robot:" + deviceSn + ":status";
             String prodStatusKey = "status:" + deviceSn;
@@ -113,5 +124,15 @@ public class RobotJobStateHandler {
         }
         String text = value.asText();
         return text == null || text.isBlank() || "null".equalsIgnoreCase(text) ? null : text;
+    }
+
+    private String firstText(JsonNode node, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            String value = textOrNull(node, fieldName);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 }
