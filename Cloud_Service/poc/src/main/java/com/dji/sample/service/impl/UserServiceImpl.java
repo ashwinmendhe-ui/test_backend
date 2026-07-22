@@ -29,6 +29,7 @@ import java.util.UUID;
 import com.dji.sample.security.CustomUserDetails;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import com.dji.sample.dto.request.ChangePasswordRequest;
 
 @Service
 @RequiredArgsConstructor
@@ -223,6 +224,67 @@ public class UserServiceImpl implements UserService {
 
         return mapToResponse(saved);
     }
+    
+    @Override
+@Transactional
+public void changePassword(UUID userId, ChangePasswordRequest request) {
+    User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+    String currentPassword =
+            request.getCurrentPassword() != null
+                    ? request.getCurrentPassword()
+                    : "";
+
+    String newPassword =
+            request.getNewPassword() != null
+                    ? request.getNewPassword()
+                    : "";
+
+    String confirmPassword =
+            request.getConfirmPassword() != null
+                    ? request.getConfirmPassword()
+                    : "";
+
+    if (currentPassword.isBlank()) {
+        throw new RuntimeException("Current password is required");
+    }
+
+    if (newPassword.isBlank()) {
+        throw new RuntimeException("New password is required");
+    }
+
+    if (confirmPassword.isBlank()) {
+        throw new RuntimeException("Confirm password is required");
+    }
+
+    if (!newPassword.equals(confirmPassword)) {
+        throw new RuntimeException(
+                "New password and confirm password do not match"
+        );
+    }
+
+    if (!passwordEncoder.matches(
+            currentPassword,
+            user.getPasswordHash()
+    )) {
+        throw new RuntimeException("Current password is incorrect");
+    }
+
+    if (passwordEncoder.matches(
+            newPassword,
+            user.getPasswordHash()
+    )) {
+        throw new RuntimeException(
+                "New password must be different from the current password"
+        );
+    }
+
+    user.setPasswordHash(passwordEncoder.encode(newPassword));
+
+    userRepository.save(user);
+}
+    
     @Override
     @Transactional
     public void deleteUser(UUID userId) {

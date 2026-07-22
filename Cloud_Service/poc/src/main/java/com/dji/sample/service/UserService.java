@@ -1,5 +1,6 @@
 package com.dji.sample.service;
 
+import com.dji.sample.dto.request.ChangePasswordRequest;
 import com.dji.sample.dto.request.CreateUserRequest;
 import com.dji.sample.dto.request.UpdateUserRequest;
 import com.dji.sample.dto.response.UserResponse;
@@ -16,6 +17,8 @@ public interface UserService {
     UserResponse createUser(CreateUserRequest request);
 
     UserResponse updateUser(UUID userId, UpdateUserRequest request);
+
+    void changePassword(UUID userId, ChangePasswordRequest request);
 
     void deleteUser(UUID userId);
 }
