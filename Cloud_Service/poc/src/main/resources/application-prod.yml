@@ -15,6 +15,7 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
+      database: ${REDIS_DB:0}
 
   redis:
     device-alive-second: ${DEVICE_ALIVE_SECOND:120}
