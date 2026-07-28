@@ -19,13 +19,10 @@ import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
 import java.util.UUID;
-import com.dji.sdk.mqtt.status.StatusRouter;
-import org.springframework.context.annotation.Import;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.messaging.MessageChannel;
 
 @Configuration
-@Import(StatusRouter.class)
 @IntegrationComponentScan(basePackageClasses = IMqttMessageGateway.class)
 public class DjiMqttSdkPublishConfig {
 
