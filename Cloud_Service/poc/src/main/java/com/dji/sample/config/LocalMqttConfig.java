@@ -32,7 +32,7 @@ public class LocalMqttConfig {
     @Value("${mqtt.port:1883}")
     private int port;
 
-    @Value("${mqtt.client-id:dhive-local-backend}")
+   @Value("${mqtt.client-id:robopilot-backend}")
     private String clientId;
 
     @Value("${mqtt.inbound-topic:sys/product/+/status}")

@@ -25,9 +25,10 @@ cors:
 mqtt:
   host: ${MQTT_HOST}
   port: ${MQTT_PORT:1883}
-  client-id: ${MQTT_CLIENT_ID:dhive-prod-backend}
+  client-id: ${MQTT_CLIENT_ID:robopilot-prod-backend}
   username: ${MQTT_USERNAME}
   password: ${MQTT_PASSWORD}
+  inbound-topic: ${MQTT_INBOUND_TOPIC:sys/product/+/status,thing/product/+/osd,thing/product/+/services_reply,robot/+/health,robot/+/response,robot/+/state,robot/+/job/state,robot/+/telemetry}
 
 ai-service:
   base-url: ${AI_SERVICE_BASE_URL}

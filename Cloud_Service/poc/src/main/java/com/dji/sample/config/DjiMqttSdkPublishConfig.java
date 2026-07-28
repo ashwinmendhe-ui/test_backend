@@ -19,8 +19,13 @@ import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
 import java.util.UUID;
+import com.dji.sdk.mqtt.status.StatusRouter;
+import org.springframework.context.annotation.Import;
+import org.springframework.integration.channel.DirectChannel;
+import org.springframework.messaging.MessageChannel;
 
 @Configuration
+@Import(StatusRouter.class)
 @IntegrationComponentScan(basePackageClasses = IMqttMessageGateway.class)
 public class DjiMqttSdkPublishConfig {
 
@@ -95,6 +100,28 @@ public class DjiMqttSdkPublishConfig {
 
         return handler;
     }
+
+
+    @Bean(name = ChannelName.INBOUND_STATUS)
+        public MessageChannel djiInboundStatusChannel() {
+        return new DirectChannel();
+        }
+
+        @Bean(name = ChannelName.INBOUND_STATUS_ONLINE)
+        public MessageChannel djiInboundStatusOnlineChannel() {
+        return new DirectChannel();
+        }
+
+        @Bean(name = ChannelName.INBOUND_STATUS_OFFLINE)
+        public MessageChannel djiInboundStatusOfflineChannel() {
+        return new DirectChannel();
+        }
+
+        @Bean(name = ChannelName.OUTBOUND_STATUS)
+        public MessageChannel djiOutboundStatusChannel() {
+        return new DirectChannel();
+        }
+
 
     private static void setField(
             Object target,

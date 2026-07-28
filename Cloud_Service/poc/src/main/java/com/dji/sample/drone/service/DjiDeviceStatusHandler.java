@@ -1,5 +1,8 @@
 package com.dji.sample.drone.service;
 
+import com.dji.sample.repository.DeviceRepository;
+import com.dji.sample.service.DeviceWebSocketPublisher;
+import com.dji.sample.service.IDeviceRedisService;
 import com.dji.sdk.cloudapi.device.UpdateTopo;
 import com.dji.sdk.cloudapi.device.UpdateTopoSubDevice;
 import com.dji.sdk.common.SDKManager;
@@ -17,11 +20,16 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import lombok.RequiredArgsConstructor;
+
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class DjiDeviceStatusHandler {
-
+        private final DeviceRepository deviceRepository;
+        private final IDeviceRedisService deviceRedisService;
+        private final DeviceWebSocketPublisher webSocketPublisher;
     /**
      * Handles gateway and sub-device ONLINE topology messages.
      *
@@ -61,6 +69,13 @@ public class DjiDeviceStatusHandler {
                             "DJI online topology does not contain a valid sub-device SN"
                     ));
 
+
+                var gatewayDevice = deviceRepository
+                        .findByDeviceSnAndDeletedAtIsNull(gatewaySn)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "DJI gateway is not registered in ROBOPILOT DB: " + gatewaySn
+                        ));
+
             SDKManager.registerDevice(
                     gatewaySn,
                     drone.getSn(),
@@ -70,6 +85,14 @@ public class DjiDeviceStatusHandler {
                     topology.getThingVersion(),
                     drone.getThingVersion()
             );
+
+
+                deviceRedisService.setDeviceOnline(gatewayDevice);
+
+                webSocketPublisher.publishDashboardRefresh(
+                        gatewaySn,
+                        "dji-status-online"
+                );
 
             log.info(
                     "[DJI][STATUS_ONLINE][SDK_REGISTER] gatewaySn={}, droneSn={}, "
@@ -125,6 +148,12 @@ public class DjiDeviceStatusHandler {
             }
 
             SDKManager.logoutDevice(gatewaySn);
+            deviceRedisService.delDeviceOnline(gatewaySn);
+
+                webSocketPublisher.publishDashboardRefresh(
+                        gatewaySn,
+                        "dji-status-offline"
+                );
 
             log.info(
                     "[DJI][STATUS_OFFLINE][SDK_LOGOUT] gatewaySn={}",
