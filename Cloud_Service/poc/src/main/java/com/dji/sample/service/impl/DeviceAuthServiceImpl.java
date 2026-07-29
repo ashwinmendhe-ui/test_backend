@@ -88,16 +88,21 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
                 : mqttPort;
 
         return DeviceLoginResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .expiresIn(jwtService.getMqttAccessTokenExpirationSeconds())
-                .tokenType(TOKEN_TYPE)
-                .mqttHost(mqttPublicHost)
-                .mqttPort(selectedMqttPort)
-                .mqttUseSsl(Boolean.TRUE.equals(mqttUseSsl))
-                .mqttUsername(device.getDeviceSn())
-                .deviceSn(device.getDeviceSn())
-                .build();
+        .accessToken(accessToken)
+        .refreshToken(refreshToken)
+        .expiresIn(jwtService.getMqttAccessTokenExpirationSeconds())
+        .tokenType("Bearer")
+
+        .workspaceId(user.getCompanyId().toString())
+        .username(user.getUsername())
+        .userId(user.getUserId().toString())
+
+        .mqttHost(mqttPublicHost)
+        .mqttPort(mqttUseSsl ? mqttSslPort : mqttPort)
+        .mqttUseSsl(mqttUseSsl)
+        .mqttUsername(deviceSn)
+        .deviceSn(deviceSn)
+        .build();
     }
 
     private void validateUser(User user, String rawPassword) {

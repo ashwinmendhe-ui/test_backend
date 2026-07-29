@@ -30,4 +30,7 @@ public class DeviceLoginResponse {
     private String mqttUsername;
 
     private String deviceSn;
+    private String workspaceId;
+    private String username;
+    private String userId;
 }
