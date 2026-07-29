@@ -35,4 +35,4 @@ Test.md
 **/application-local.yml
 
 # Local helper script
-scripts/start-redis-tunnel.sh
+scripts/
