@@ -28,6 +28,12 @@ app:
     secret: ${JWT_SECRET:my-super-secret-key-my-super-secret-key-123456}
     access-token-expiration-ms: ${JWT_ACCESS_TOKEN_EXPIRATION_MS:86400000}
     refresh-token-expiration-ms: ${JWT_REFRESH_TOKEN_EXPIRATION_MS:259200000}
+
+    mqtt-secret: ${JWT_MQTT_SECRET:my-mqtt-secret-key-my-mqtt-secret-key-123456}
+    mqtt-access-token-expiration-seconds: ${JWT_MQTT_ACCESS_TOKEN_EXPIRATION_SECONDS:846000}
+    mqtt-refresh-token-expiration-seconds: ${JWT_MQTT_REFRESH_TOKEN_EXPIRATION_SECONDS:2592000}
+    mqtt-issuer: ${JWT_MQTT_ISSUER:DJI}
+
   upload:
     mission-dir: ${MISSION_UPLOAD_DIR:uploads/missions}
 
@@ -46,8 +52,17 @@ aws:
 
 mqtt:
   enabled: ${MQTT_ENABLED:true}
+
+  # Internal broker address used by the ROBOPILOT backend.
   host: ${MQTT_HOST:localhost}
   port: ${MQTT_PORT:1883}
+
+  # Broker address returned to DJI Pilot during device login.
+  # In local development it falls back to mqtt.host.
+  public-host: ${MQTT_PUBLIC_HOST:${mqtt.host}}
+  ssl-port: ${MQTT_SSL_PORT:8883}
+  use-ssl: ${MQTT_USE_SSL:false}
+
   client-id: ${MQTT_CLIENT_ID:dhive-local-backend}
   username: ${MQTT_USERNAME:cloud-server}
   password: ${MQTT_PASSWORD:}

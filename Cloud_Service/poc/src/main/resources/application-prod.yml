@@ -24,8 +24,15 @@ cors:
   allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS}
 
 mqtt:
+  # Internal broker address used by the ROBOPILOT backend.
   host: ${MQTT_HOST}
   port: ${MQTT_PORT:1883}
+
+  # Public broker address returned to DJI Pilot.
+  public-host: ${MQTT_PUBLIC_HOST}
+  ssl-port: ${MQTT_SSL_PORT:8883}
+  use-ssl: ${MQTT_USE_SSL:false}
+
   client-id: ${MQTT_CLIENT_ID:robopilot-prod-backend}
   username: ${MQTT_USERNAME}
   password: ${MQTT_PASSWORD}
@@ -38,3 +45,8 @@ ai-service:
 app:
   jwt:
     secret: ${JWT_SECRET}
+
+    mqtt-secret: ${JWT_MQTT_SECRET}
+    mqtt-access-token-expiration-seconds: ${JWT_MQTT_ACCESS_TOKEN_EXPIRATION_SECONDS:846000}
+    mqtt-refresh-token-expiration-seconds: ${JWT_MQTT_REFRESH_TOKEN_EXPIRATION_SECONDS:2592000}
+    mqtt-issuer: ${JWT_MQTT_ISSUER:DJI}
