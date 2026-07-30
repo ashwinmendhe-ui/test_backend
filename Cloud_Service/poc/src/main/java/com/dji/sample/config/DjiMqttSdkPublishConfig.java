@@ -21,6 +21,7 @@ import java.lang.reflect.Field;
 import java.util.UUID;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.messaging.MessageChannel;
+import com.dji.sdk.mqtt.status.StatusRouter;
 
 @Configuration
 @IntegrationComponentScan(basePackageClasses = IMqttMessageGateway.class)
@@ -74,6 +75,32 @@ public class DjiMqttSdkPublishConfig {
 
         return bean;
     }
+
+
+    @Bean
+public StatusRouter statusRouter(
+        MqttGatewayPublish mqttGatewayPublish
+) {
+    StatusRouter router = new StatusRouter();
+
+    setField(router, "gatewayPublish", mqttGatewayPublish);
+
+    return router;
+}
+
+@Bean
+public IntegrationFlow djiStatusRouterFlow(
+        StatusRouter statusRouter
+) {
+    return statusRouter.statusRouterFlow();
+}
+
+@Bean
+public IntegrationFlow djiStatusReplyFlow(
+        StatusRouter statusRouter
+) {
+    return statusRouter.replySuccessStatus();
+}
 
     @Bean
     @ServiceActivator(inputChannel = ChannelName.OUTBOUND)
