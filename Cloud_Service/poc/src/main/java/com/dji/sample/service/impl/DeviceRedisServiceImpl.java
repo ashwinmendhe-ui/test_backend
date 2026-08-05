@@ -72,12 +72,7 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
         );
     }
 
-    @Override
-    public void setDeviceStatus(String deviceSn, String status) {
-        stringRedisTemplate.opsForValue()
-                .set("robot:" + deviceSn + ":status", status, 120, TimeUnit.SECONDS);
-    }
-
+    
     @Override
     public void setDeviceTelemetry(String deviceSn, String telemetryJson) {
         stringRedisTemplate.opsForValue()
@@ -117,6 +112,11 @@ public class DeviceRedisServiceImpl implements IDeviceRedisService {
     }
 
 
+    @Override
+    public String getRobotJobId(String deviceSn) {
+        return stringRedisTemplate.opsForValue()
+                .get("robot:" + deviceSn + ":jobId");
+    }
 
     @Override
     public void clearAllRobotJobState() {

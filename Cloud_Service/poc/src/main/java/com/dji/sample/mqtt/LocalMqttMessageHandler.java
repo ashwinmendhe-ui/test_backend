@@ -17,13 +17,14 @@ import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import com.dji.sdk.mqtt.services.ServicesReplyHandler;
 import org.springframework.messaging.support.MessageBuilder;
-import java.nio.charset.StandardCharsets;
 import com.dji.sample.service.DeviceWebSocketPublisher;
+import com.dji.sdk.mqtt.ChannelName;
+import org.springframework.messaging.MessageChannel;
+import jakarta.annotation.Resource;
 
 @Slf4j
 @Component
@@ -39,6 +40,9 @@ public class LocalMqttMessageHandler {
     private final IDeviceRedisService deviceRedisService;
     private final ServicesReplyHandler servicesReplyHandler;
     private final DeviceWebSocketPublisher webSocketPublisher;
+
+    @Resource(name = ChannelName.INBOUND_STATUS)
+    private MessageChannel djiInboundStatusChannel;
 
     @ServiceActivator(inputChannel = LocalMqttConfig.DEVICE_STATUS_CHANNEL)
     public void handle(Message<?> message) {
@@ -70,7 +74,19 @@ public class LocalMqttMessageHandler {
                 return;
             }
             if (topic.startsWith("sys/product/") && topic.endsWith("/status")) {
-                handleDjiStatus(topic, payload);
+                Message<byte[]> sdkMessage = MessageBuilder
+                        .withPayload(payload.getBytes(StandardCharsets.UTF_8))
+                        .copyHeaders(message.getHeaders())
+                        .build();
+
+                boolean sent = djiInboundStatusChannel.send(sdkMessage);
+
+                log.info(
+                        "[MQTT][DJI][STATUS] Forwarded to SDK StatusRouter. topic={}, sent={}",
+                        topic,
+                        sent
+                );
+
                 return;
             }
 
@@ -139,7 +155,6 @@ public class LocalMqttMessageHandler {
         String telemetryJson = objectMapper.writeValueAsString(telemetry);
 
         deviceRedisService.setDeviceOnlineBySn(deviceSn, 120);
-        deviceRedisService.setDeviceStatus(deviceSn, "online");
         deviceRedisService.setDeviceTelemetry(deviceSn, telemetryJson);
 
         webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-osd");
@@ -174,27 +189,4 @@ public class LocalMqttMessageHandler {
         return "UNKNOWN";
     }
 
-    private void handleDjiStatus(String topic, String payload) throws Exception {
-        String deviceSn = topic.substring("sys/product/".length(), topic.length() - "/status".length());
-
-        JsonNode root = objectMapper.readTree(payload);
-        JsonNode subDevices = root.path("data").path("sub_devices");
-
-        boolean online = subDevices.isArray() && !subDevices.isEmpty();
-
-        if (online) {
-            deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn)
-                    .ifPresent(deviceRedisService::setDeviceOnline);
-
-            webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-status");
-
-            log.info("[MQTT][DJI] Device online: {}", deviceSn);
-        } else {
-            deviceRedisService.delDeviceOnline(deviceSn);
-
-            webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-status");
-
-            log.info("[MQTT][DJI] Device offline: {}", deviceSn);
-        }
     }
-}

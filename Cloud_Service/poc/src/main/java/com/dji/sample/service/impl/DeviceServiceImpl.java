@@ -4,7 +4,6 @@ import com.dji.sample.dto.request.DeviceRequest;
 import com.dji.sample.dto.response.DeviceResponse;
 import com.dji.sample.entity.Company;
 import com.dji.sample.entity.Device;
-import com.dji.sample.entity.LiveStreamSession;
 import com.dji.sample.entity.Mission;
 import com.dji.sample.entity.Site;
 import com.dji.sample.repository.CompanyRepository;
@@ -25,6 +24,12 @@ import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.dji.sample.entity.SubDevice;
 import com.dji.sample.repository.SubDeviceRepository;
+import com.dji.sample.entity.User;
+import com.dji.sample.repository.UserRepository;
+import com.dji.sample.repository.UserRoleRepository;
+import com.dji.sample.security.CustomUserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 
 @Service
@@ -41,16 +46,66 @@ public class DeviceServiceImpl implements DeviceService {
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
     private final SubDeviceRepository subDeviceRepository;
+    private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Override
     @Transactional(readOnly = true)
-    public List<DeviceResponse> getDevices(String keyword, String from, String to, UUID siteId) {
+    public List<DeviceResponse> getDevices(
+            String keyword,
+            String from,
+            String to,
+            UUID siteId,
+            String scope
+    ) {
+        User currentUser = getCurrentUser();
+        UUID userId = currentUser.getUserId();
+
+        boolean isSysAdmin = userRoleRepository.existsByUserIdAndRoleId(userId, 1);
+        boolean isCompanyUser = userRoleRepository.existsByUserIdAndRoleId(userId, 3);
+        boolean siteScope = "site".equalsIgnoreCase(scope);
         List<Device> devices;
 
-        if (siteId != null) {
-            devices = deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId);
-        } else {
-            devices = deviceRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+        if (isSysAdmin) {
+            devices = siteId != null
+                    ? deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId)
+                    : deviceRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+        } else if (isCompanyUser && siteScope && siteId != null) {
+
+    boolean hasAssignedSite = currentUser.getSites() != null
+            && currentUser.getSites().stream()
+                    .anyMatch(site ->
+                            site.getDeletedAt() == null
+                                    && siteId.equals(site.getSiteId()));
+
+    if (!hasAssignedSite) {
+        devices = List.of();
+    } else {
+        devices = deviceRepository
+                .findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId);
+    }
+
+} else if (isCompanyUser && currentUser.getDevices() != null && !currentUser.getDevices().isEmpty()) {
+
+    devices = currentUser.getDevices().stream()
+            .filter(device -> device.getDeletedAt() == null)
+            .filter(device -> siteId == null
+                    || (device.getSite() != null
+                    && siteId.equals(device.getSite().getSiteId())))
+            .toList();
+} else {
+            UUID companyId = currentUser.getCompanyId();
+
+            if (companyId == null) {
+                devices = List.of();
+            } else if (siteId != null) {
+                devices = deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId)
+                        .stream()
+                        .filter(device -> device.getCompany() != null && companyId.equals(device.getCompany().getCompanyId()))
+                        .toList();
+            } else {
+                devices = deviceRepository.findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
+            }
         }
 
         return devices.stream()
@@ -58,7 +113,6 @@ public class DeviceServiceImpl implements DeviceService {
                 .map(this::toResponse)
                 .toList();
     }
-
     @Override
     @Transactional(readOnly = true)
     public DeviceResponse getDevice(UUID deviceId) {
@@ -245,6 +299,18 @@ public class DeviceServiceImpl implements DeviceService {
                     .filter(sn -> sn != null && !sn.isBlank())
                     .orElse(deviceSn);
         }
+
+    private User getCurrentUser() {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+            if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+                throw new RuntimeException("Authenticated user not found");
+            }
+
+            return userRepository.findByUserIdAndDeletedAtIsNull(customUserDetails.getUserId())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+        }
+
     private DeviceResponse toResponse(Device device) {
         Company company = device.getCompany();
         Site site = device.getSite();
@@ -274,37 +340,6 @@ public class DeviceServiceImpl implements DeviceService {
         missionName = mission != null ? mission.getMissionName() : null;
     }
 }
-
-        if (missionId == null && device.getDeviceSn() != null) {
-            String redisMissionId = stringRedisTemplate.opsForValue()
-                    .get("robot:" + device.getDeviceSn() + ":missionId");
-
-            if (redisMissionId != null && !redisMissionId.isBlank()) {
-                try {
-                    missionId = UUID.fromString(redisMissionId);
-
-                    Mission mission = missionRepository
-                            .findByMissionIdAndDeletedAtIsNull(missionId)
-                            .orElse(null);
-
-                    missionName = mission != null ? mission.getMissionName() : null;
-
-                } catch (Exception e) {
-                    missionId = null;
-                    missionName = null;
-                }
-            }
-        }
-
-        if (missionId == null && device.getMissionId() != null) {
-            missionId = device.getMissionId();
-
-            Mission mission = missionRepository
-                    .findByMissionIdAndDeletedAtIsNull(missionId)
-                    .orElse(null);
-
-            missionName = mission != null ? mission.getMissionName() : null;
-        }
 
 
         String responseStatus = "offline";

@@ -16,7 +16,6 @@ public interface IDeviceRedisService {
 
     String getRobotTelemetry(String deviceSn);
 
-    void setDeviceStatus(String deviceSn, String status);
     void setDeviceOnlineBySn(String deviceSn, long ttlSeconds);
 
     void setDeviceTelemetry(String deviceSn, String telemetryJson);
@@ -24,6 +23,7 @@ public interface IDeviceRedisService {
     void clearRobotJobState(String deviceSn);
 
     void clearDeviceStatus(String deviceSn);
+    String getRobotJobId(String deviceSn);
 
     void setRobotJobState(
             String deviceSn,

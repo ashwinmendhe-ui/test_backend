@@ -38,6 +38,7 @@ public class HistoryServiceImpl implements HistoryService {
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final S3PresignService s3PresignService;
     private final ObjectMapper objectMapper;
+    private static final long BOOKMARK_FPS = 30L;
     
     @Override
     public List<HistoryListResponse> getList() {
@@ -62,8 +63,8 @@ public class HistoryServiceImpl implements HistoryService {
         String metadataUrl = resolveMetadataUrl(history.getPlaybackUrl());
 
         Map<String, Integer> labelCounts = loadLabelCounts(metadataUrl);
-        List<BookmarkResponse> bookmarks = loadBookmarks(metadataUrl);
-
+        List<BookmarkResponse> bookmarks =
+        loadBookmarks(metadataUrl, history.getStartTime());
         int calculatedTotalRecognition = !labelCounts.isEmpty()
                 ? labelCounts.values().stream().mapToInt(Integer::intValue).sum()
                 : bookmarks.size();
@@ -293,128 +294,237 @@ public class HistoryServiceImpl implements HistoryService {
 }
     }
 
-    private List<BookmarkRaw> loadBookmarkRaw(String playbackUrl) {
-        try {
-            String folderPath = extractFolderPathFromUrl(playbackUrl);
-            if (folderPath == null) return Collections.emptyList();
+   private List<BookmarkRaw> loadBookmarkRaw(String playbackUrl) {
+    try {
+        String folderPath = extractFolderPathFromUrl(playbackUrl);
 
-            String objectKey = folderPath + "/bookmark.ndjson";
-            List<BookmarkRaw> result = new ArrayList<>();
-            
+        if (folderPath == null) {
+            return Collections.emptyList();
+        }
 
-            try (InputStream is = s3PresignService.getStreamObject(objectKey);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
+        String objectKey = folderPath + "/bookmark.ndjson";
+        List<BookmarkRaw> result = new ArrayList<>();
 
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.isBlank()) continue;
+        try (
+                InputStream is = s3PresignService.getStreamObject(objectKey);
+                BufferedReader reader =
+                        new BufferedReader(new InputStreamReader(is))
+        ) {
+            String line;
 
-                    JsonNode node = objectMapper.readTree(line);
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank()) {
+                    continue;
+                }
 
-                    BookmarkRaw raw = new BookmarkRaw();
-                    raw.labelIds = new ArrayList<>();
+                JsonNode node = objectMapper.readTree(line);
 
-                    JsonNode cAr = node.get("c_ar");
-                    if (cAr != null && cAr.isArray()) {
-                        for (JsonNode item : cAr) {
-                            raw.labelIds.add(item.asInt());
-                        }
+                BookmarkRaw raw = new BookmarkRaw();
+                raw.labelIds = new ArrayList<>();
+
+                JsonNode cAr = node.get("c_ar");
+
+                if (cAr != null && cAr.isArray()) {
+                    for (JsonNode item : cAr) {
+                        raw.labelIds.add(item.asInt());
                     }
-
-                    raw.offset = node.has("o") ? node.get("o").asLong() : 0L;
-                    result.add(raw);
                 }
-            }
 
-            return result;
-        } catch (Exception e) {
-    log.warn("[History] Failed to load bookmark.ndjson for playbackUrl={}", playbackUrl, e);
-    return Collections.emptyList();
+                raw.offset = node.has("o")
+                        ? node.get("o").asLong()
+                        : 0L;
+
+                result.add(raw);
+            }
+        }
+
+        return result;
+
+    } catch (Exception e) {
+        log.warn(
+                "[History] Failed to load bookmark.ndjson for playbackUrl={}",
+                playbackUrl,
+                e
+        );
+
+        return Collections.emptyList();
+    }
 }
+
+private Map<String, Integer> loadLabelCounts(String playbackUrl) {
+    Map<String, Integer> labels = loadLabels(playbackUrl);
+
+    if (labels.isEmpty()) {
+        return Collections.emptyMap();
     }
 
-    private Map<String, Integer> loadLabelCounts(String playbackUrl) {
-        Map<String, Integer> labels = loadLabels(playbackUrl);
-        if (labels.isEmpty()) return Collections.emptyMap();
+    Map<Integer, String> idToName = new HashMap<>();
+    labels.forEach((name, id) -> idToName.put(id, name));
 
-        Map<Integer, String> idToName = new HashMap<>();
-        labels.forEach((name, id) -> idToName.put(id, name));
+    Map<String, Integer> counts = new HashMap<>();
 
-        Map<String, Integer> counts = new HashMap<>();
+    for (BookmarkRaw bookmark : loadBookmarkRaw(playbackUrl)) {
+        for (Integer labelId : bookmark.labelIds) {
+            String labelName = idToName.get(labelId);
 
-        for (BookmarkRaw bookmark : loadBookmarkRaw(playbackUrl)) {
-            for (Integer labelId : bookmark.labelIds) {
-                String labelName = idToName.get(labelId);
-                if (labelName != null) {
-                    counts.put(labelName, counts.getOrDefault(labelName, 0) + 1);
-                }
+            if (labelName != null) {
+                counts.put(
+                        labelName,
+                        counts.getOrDefault(labelName, 0) + 1
+                );
             }
         }
-
-        return counts;
     }
 
-    private List<BookmarkResponse> loadBookmarks(String playbackUrl) {
-        Map<String, Integer> labels = loadLabels(playbackUrl);
-        if (labels.isEmpty()) return Collections.emptyList();
+    return counts;
+}
 
-        Map<Integer, String> idToName = new HashMap<>();
-        labels.forEach((name, id) -> idToName.put(id, name));
+private List<BookmarkResponse> loadBookmarks(
+        String playbackUrl,
+        OffsetDateTime startTime
+) {
+    Map<String, Integer> labels = loadLabels(playbackUrl);
 
-        List<BookmarkResponse> responses = new ArrayList<>();
+    if (labels.isEmpty()) {
+        return Collections.emptyList();
+    }
 
-        for (BookmarkRaw bookmark : loadBookmarkRaw(playbackUrl)) {
-            for (Integer labelId : bookmark.labelIds) {
-                String labelName = idToName.get(labelId);
-                if (labelName != null) {
-                    responses.add(BookmarkResponse.builder()
+    Map<Integer, String> idToName = new HashMap<>();
+    labels.forEach((name, id) -> idToName.put(id, name));
+
+    List<BookmarkRaw> rawBookmarks =
+            new ArrayList<>(loadBookmarkRaw(playbackUrl));
+
+    rawBookmarks.sort(
+            Comparator.comparingLong(
+                    bookmark -> bookmark.offset == null
+                            ? 0L
+                            : bookmark.offset
+            )
+    );
+
+    List<BookmarkResponse> responses = new ArrayList<>();
+
+    for (BookmarkRaw bookmark : rawBookmarks) {
+        for (Integer labelId : bookmark.labelIds) {
+            String labelName = idToName.get(labelId);
+
+            if (labelName == null) {
+                continue;
+            }
+
+            String duration =
+                    formatBookmarkOffset(bookmark.offset);
+
+            String displayTime =
+                    formatBookmarkClockTime(
+                            startTime,
+                            bookmark.offset
+                    );
+
+            responses.add(
+                    BookmarkResponse.builder()
                             .label(labelName)
-                            .mdisplay("")
-                            .duration("")
-                            .build());
-                }
-            }
+                            .mdisplay(displayTime)
+                            .duration(duration)
+                            .build()
+            );
         }
-
-        return responses;
     }
 
-    private String resolveMetadataUrl(String playbackUrl) {
-            if (playbackUrl == null || playbackUrl.isBlank()) {
-                return playbackUrl;
-            }
+    return responses;
+}
 
-            if (playbackUrl.contains("/streams/")) {
-                return playbackUrl;
-            }
-
-            String marker = "/live/hls/";
-            int idx = playbackUrl.indexOf(marker);
-            if (idx < 0) {
-                return playbackUrl;
-            }
-
-            String after = playbackUrl.substring(idx + marker.length());
-            String sessionIdText = after.split("/")[0];
-
-            try {
-                UUID sessionId = UUID.fromString(sessionIdText);
-
-                String resolvedUrl = liveStreamSessionRepository.findById(sessionId)
-                        .map(LiveStreamSession::getPlaybackUrl)
-                        .filter(url -> url != null && !url.isBlank())
-                        .orElse(playbackUrl);
-                return resolvedUrl;
-
-            } catch (Exception e) {
-                log.warn("[History] Failed to resolve metadata url from playbackUrl={}", playbackUrl, e);
-                return playbackUrl;
-            }
-        }
-    private static class BookmarkRaw {
-        List<Integer> labelIds;
-        Long offset;
+private String resolveMetadataUrl(String playbackUrl) {
+    if (playbackUrl == null || playbackUrl.isBlank()) {
+        return playbackUrl;
     }
+
+    if (playbackUrl.contains("/streams/")) {
+        return playbackUrl;
+    }
+
+    String marker = "/live/hls/";
+    int idx = playbackUrl.indexOf(marker);
+
+    if (idx < 0) {
+        return playbackUrl;
+    }
+
+    String after = playbackUrl.substring(idx + marker.length());
+    String sessionIdText = after.split("/")[0];
+
+    try {
+        UUID sessionId = UUID.fromString(sessionIdText);
+
+        return liveStreamSessionRepository.findById(sessionId)
+                .map(LiveStreamSession::getPlaybackUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .orElse(playbackUrl);
+
+    } catch (Exception e) {
+        log.warn(
+                "[History] Failed to resolve metadata url from playbackUrl={}",
+                playbackUrl,
+                e
+        );
+
+        return playbackUrl;
+    }
+}
+
+private String formatBookmarkOffset(Long frameOffset) {
+    if (frameOffset == null || frameOffset < 0) {
+        return "00:00:00";
+    }
+
+    long totalSeconds = frameOffset / BOOKMARK_FPS;
+
+    long hours = totalSeconds / 3600;
+    long minutes = (totalSeconds % 3600) / 60;
+    long seconds = totalSeconds % 60;
+
+    return String.format(
+            "%02d:%02d:%02d",
+            hours,
+            minutes,
+            seconds
+    );
+}
+
+private String formatBookmarkClockTime(
+        OffsetDateTime startTime,
+        Long frameOffset
+) {
+    if (startTime == null) {
+        return formatBookmarkOffset(frameOffset);
+    }
+
+    long safeFrameOffset =
+            frameOffset == null || frameOffset < 0
+                    ? 0L
+                    : frameOffset;
+
+    long offsetMillis = Math.round(
+            safeFrameOffset * 1000.0 / BOOKMARK_FPS
+    );
+
+    return startTime
+            .plusNanos(offsetMillis * 1_000_000L)
+            .atZoneSameInstant(
+                    java.time.ZoneId.of("Asia/Seoul")
+            )
+            .format(
+                    java.time.format.DateTimeFormatter
+                            .ofPattern("HH:mm:ss")
+            );
+}
+
+private static class BookmarkRaw {
+    List<Integer> labelIds;
+    Long offset;
+}
+
     private String format(OffsetDateTime value) {
         String formatted = DateTimeUtil.formatKst(value);
         return formatted != null ? formatted : "";

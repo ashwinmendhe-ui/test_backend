@@ -21,6 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.repository.UserRoleRepository;
+import com.dji.sample.security.CustomUserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
@@ -31,18 +35,39 @@ public class CompanyServiceImpl implements CompanyService {
     private final SiteRepository siteRepository;
     private final MissionRepository missionRepository;
     private final DeviceRepository deviceRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Override
-    public List<CompanyResponse> searchCompanies(String keyword) {
-        List<Company> companies = (keyword == null || keyword.isBlank())
+public List<CompanyResponse> searchCompanies(String keyword) {
+    User currentUser = getCurrentUser();
+    List<Company> companies;
+
+    if (isSysAdmin(currentUser)) {
+        companies = (keyword == null || keyword.isBlank())
                 ? companyRepository.findByDeletedAtIsNull()
                 : companyRepository.findByNameContainingIgnoreCaseAndDeletedAtIsNull(keyword.trim());
+    } else {
+        UUID companyId = currentUser.getCompanyId();
 
-        return companies.stream()
-                .map(this::mapToResponse)
-                .toList();
+        companies = companyId == null
+                ? List.of()
+                : companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId)
+                    .map(List::of)
+                    .orElse(List.of());
+
+        if (keyword != null && !keyword.isBlank()) {
+            String lower = keyword.trim().toLowerCase();
+            companies = companies.stream()
+                    .filter(company -> company.getName() != null
+                            && company.getName().toLowerCase().contains(lower))
+                    .toList();
+        }
     }
 
+    return companies.stream()
+            .map(this::mapToResponse)
+            .toList();
+}
     @Override
     public CompanyResponse getCompanyById(UUID id) {
         Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(id)
@@ -143,6 +168,22 @@ public class CompanyServiceImpl implements CompanyService {
         company.setStatus("INACTIVE");
         companyRepository.save(company);
     }
+
+    private User getCurrentUser() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+    if (authentication == null ||
+            !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+        throw new RuntimeException("Authenticated user not found");
+    }
+
+    return userRepository.findByUserIdAndDeletedAtIsNull(customUserDetails.getUserId())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+}
+
+private boolean isSysAdmin(User user) {
+    return userRoleRepository.existsByUserIdAndRoleId(user.getUserId(), 1);
+}
 
     private String formatKst(OffsetDateTime dateTime) {
         if (dateTime == null) {

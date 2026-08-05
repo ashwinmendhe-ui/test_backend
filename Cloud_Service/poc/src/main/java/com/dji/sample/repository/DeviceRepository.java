@@ -22,5 +22,8 @@ public interface DeviceRepository extends JpaRepository<Device, Integer> {
     List<Device> findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID companyId);
     boolean existsByDeviceSn(String deviceSn);
     List<Device> findByDeletedAtIsNull();
+    long countByDeletedAtIsNull();
+
+    long countByCompany_CompanyIdAndDeletedAtIsNull(UUID companyId);
 
 }

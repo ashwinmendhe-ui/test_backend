@@ -7,12 +7,12 @@ import com.dji.sample.dto.response.UserResponse;
 import com.dji.sample.service.UserService;
 import lombok.RequiredArgsConstructor;
 
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import com.dji.sample.dto.response.UserDetailResponse;
 
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.dto.request.ChangePasswordRequest;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -69,4 +69,19 @@ public class UserController {
                 .data(null)
                 .build();
     }
+
+
+    @PostMapping("/{id}/change-password")
+public ApiResponse<Void> changePassword(
+        @PathVariable UUID id,
+        @RequestBody ChangePasswordRequest request
+) {
+    userService.changePassword(id, request);
+
+    return ApiResponse.<Void>builder()
+            .success(true)
+            .message("Password changed successfully")
+            .data(null)
+            .build();
+}
 }

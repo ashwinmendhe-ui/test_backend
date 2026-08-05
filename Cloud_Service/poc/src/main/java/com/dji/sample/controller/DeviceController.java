@@ -1,15 +1,15 @@
 package com.dji.sample.controller;
 
 import com.dji.sample.dto.request.DeviceRequest;
+import com.dji.sample.dto.response.ApiResponse;
 import com.dji.sample.dto.response.DeviceResponse;
+import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
 import com.dji.sample.service.DeviceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
-import com.dji.sample.dto.response.ApiResponse;
-import com.dji.sample.robot.dto.response.RobotTelemetryResponse;
 
 @RestController
 @RequestMapping("/api/v1/devices")
@@ -23,16 +23,16 @@ public class DeviceController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
-            @RequestParam(required = false) UUID siteId
+            @RequestParam(required = false) UUID siteId,
+            @RequestParam(required = false) String scope
     ) {
-        return deviceService.getDevices(keyword, from, to, siteId);
+        return deviceService.getDevices(keyword, from, to, siteId, scope);
     }
 
     @GetMapping("/{deviceId}")
     public DeviceResponse getDevice(@PathVariable UUID deviceId) {
         return deviceService.getDevice(deviceId);
     }
-
 
     @GetMapping("/{deviceSn}/telemetry")
     public ApiResponse<RobotTelemetryResponse> getDeviceTelemetry(

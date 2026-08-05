@@ -27,10 +27,20 @@ public class RobotJobStateHandler {
             JsonNode root = objectMapper.readTree(payload);
             JsonNode data = root.has("data") ? root.path("data") : root;
 
-            String jobId = textOrNull(data, "job_id");
-            String status = textOrNull(data, "status");
-            String missionId = textOrNull(data, "mission_id");
+            String jobId = firstText(data, "job_id", "jobId");
+            String status = firstText(data, "status", "job_status", "jobStatus");
+            String missionId = firstText(data, "mission_id", "missionId");
             String message = textOrNull(data, "message");
+
+            log.info(
+                        "Parsed robot job state. deviceSn={}, jobId={}, status={}, missionId={}, rawData={}",
+                        deviceSn,
+                        jobId,
+                        status,
+                        missionId,
+                        data
+                );
+
 
             RobotJobStateData jobState = new RobotJobStateData();
             jobState.setJobId(jobId);
@@ -38,6 +48,7 @@ public class RobotJobStateHandler {
             jobState.setMissionId(missionId);
             jobState.setMessage(message);
 
+            
             String jobKey = "robot:" + deviceSn + ":jobId";
             String localStatusKey = "robot:" + deviceSn + ":status";
             String prodStatusKey = "status:" + deviceSn;
@@ -70,30 +81,76 @@ public class RobotJobStateHandler {
                         .isPresent();
 
                 if (!hasActiveSession) {
-                    stringRedisTemplate.delete(jobKey);
+
+                    /*
+                    * Preserve the robot-reported active jobId so orphan cleanup can
+                    * cancel the physical robot job even when the DB session is no
+                    * longer ACTIVE.
+                    *
+                    * Do not preserve working/status/mission values because those
+                    * would make the dashboard incorrectly remain in working state.
+                    */
+                    Duration orphanJobTtl = Duration.ofMinutes(10);
+
+                    if (jobId != null
+                            && status != null
+                            && "RUNNING".equalsIgnoreCase(status)) {
+
+                        stringRedisTemplate.opsForValue().set(
+                                jobKey,
+                                jobId,
+                                orphanJobTtl
+                        );
+
+                        log.warn(
+                                "Preserved orphan robot jobId for cleanup. deviceSn={}, jobId={}, status={}",
+                                deviceSn,
+                                jobId,
+                                status
+                        );
+                    } else {
+                        stringRedisTemplate.delete(jobKey);
+                    }
+
                     stringRedisTemplate.delete(localStatusKey);
                     stringRedisTemplate.delete(prodStatusKey);
                     stringRedisTemplate.delete(missionKey);
 
-                    log.warn("Ignoring stale robot job state because no ACTIVE session exists. deviceSn={}, jobId={}, status={}",
-                            deviceSn, jobId, status);
+                    log.warn(
+                            "Ignoring robot working state because no ACTIVE session exists. deviceSn={}, jobId={}, status={}",
+                            deviceSn,
+                            jobId,
+                            status
+                    );
+
                     return;
                 }
+                /*
+            * An active robot job can run much longer than 10 minutes, while the robot
+            * may publish RUNNING only when the state changes. Therefore these runtime
+            * keys must remain until an explicit terminal state or stream cleanup clears
+            * them.
+            */
+            if (jobId != null) {
+                stringRedisTemplate.opsForValue().set(jobKey, jobId);
+            }
 
-                Duration ttl = Duration.ofMinutes(10);
+            if (status != null) {
+                stringRedisTemplate.opsForValue().set(localStatusKey, status);
+                stringRedisTemplate.opsForValue().set(prodStatusKey, status);
+            }
 
-                if (jobId != null) {
-                    stringRedisTemplate.opsForValue().set(jobKey, jobId, ttl);
-                }
+            if (missionId != null) {
+                stringRedisTemplate.opsForValue().set(missionKey, missionId);
+            }
 
-                if (status != null) {
-                    stringRedisTemplate.opsForValue().set(localStatusKey, status, ttl);
-                    stringRedisTemplate.opsForValue().set(prodStatusKey, status, ttl);
-                }
-
-                if (missionId != null) {
-                    stringRedisTemplate.opsForValue().set(missionKey, missionId, ttl);
-                }
+            log.info(
+                    "Active robot job state stored without expiry. deviceSn={}, jobId={}, status={}, missionId={}",
+                    deviceSn,
+                    jobId,
+                    status,
+                    missionId
+            );
             }
             webSocketPublisher.publishStatus(deviceSn, jobState);
             webSocketPublisher.publishDashboardStatus(deviceSn, status, "robot-job-state");
@@ -113,5 +170,15 @@ public class RobotJobStateHandler {
         }
         String text = value.asText();
         return text == null || text.isBlank() || "null".equalsIgnoreCase(text) ? null : text;
+    }
+
+    private String firstText(JsonNode node, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            String value = textOrNull(node, fieldName);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 }

@@ -19,6 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.dji.sample.entity.User;
+import com.dji.sample.repository.UserRepository;
+import com.dji.sample.repository.UserRoleRepository;
+import com.dji.sample.security.CustomUserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
@@ -28,22 +34,34 @@ public class SiteServiceImpl implements SiteService {
     private final CompanyRepository companyRepository;
     private final MissionRepository missionRepository;
     private final DeviceRepository deviceRepository;
+    private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Override
     public List<SiteResponse> searchSites(UUID companyId) {
+        User currentUser = getCurrentUser();
         List<Site> sites;
 
-        if (companyId != null) {
-            sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
+        if (isSysAdmin(currentUser)) {
+            if (companyId != null) {
+                sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
+            } else {
+                sites = siteRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+            }
         } else {
-            sites = siteRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+            UUID effectiveCompanyId = currentUser.getCompanyId();
+
+            if (effectiveCompanyId == null) {
+                sites = List.of();
+            } else {
+                sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(effectiveCompanyId);
+            }
         }
 
         return sites.stream()
                 .map(this::toResponse)
                 .toList();
     }
-
     @Override
     public SiteResponse getSiteById(UUID id) {
         Site site = siteRepository.findBySiteIdAndDeletedAtIsNull(id)
@@ -136,6 +154,21 @@ public class SiteServiceImpl implements SiteService {
                 .map(Company::getName)
                 .orElse(null);
     }
+
+    private User getCurrentUser() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+    if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+        throw new RuntimeException("Authenticated user not found");
+    }
+
+    return userRepository.findByUserIdAndDeletedAtIsNull(customUserDetails.getUserId())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+}
+
+private boolean isSysAdmin(User user) {
+    return userRoleRepository.existsByUserIdAndRoleId(user.getUserId(), 1);
+}
 
     private SiteResponse toResponse(Site site) {
 

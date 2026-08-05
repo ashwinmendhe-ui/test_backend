@@ -10,11 +10,12 @@ import java.util.UUID;
 public interface DeviceService {
 
     List<DeviceResponse> getDevices(
-            String keyword,
-            String from,
-            String to,
-            UUID siteId
-    );
+        String keyword,
+        String from,
+        String to,
+        UUID siteId,
+        String scope
+);
 
     DeviceResponse getDevice(UUID deviceId);
 

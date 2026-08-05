@@ -21,4 +21,8 @@ public interface SiteRepository extends JpaRepository<Site, Integer> {
             String name,
             UUID companyId
     );
+
+    long countByDeletedAtIsNull();
+
+    long countByCompanyIdAndDeletedAtIsNull(UUID companyId);
 }

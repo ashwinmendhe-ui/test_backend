@@ -15,6 +15,7 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
+      database: ${REDIS_DB:0}
 
   redis:
     device-alive-second: ${DEVICE_ALIVE_SECOND:120}
@@ -23,11 +24,19 @@ cors:
   allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS}
 
 mqtt:
+  # Internal broker address used by the ROBOPILOT backend.
   host: ${MQTT_HOST}
   port: ${MQTT_PORT:1883}
-  client-id: ${MQTT_CLIENT_ID:dhive-prod-backend}
+
+  # Public broker address returned to DJI Pilot.
+  public-host: ${MQTT_PUBLIC_HOST}
+  ssl-port: ${MQTT_SSL_PORT:8883}
+  use-ssl: ${MQTT_USE_SSL:false}
+
+  client-id: ${MQTT_CLIENT_ID:robopilot-prod-backend}
   username: ${MQTT_USERNAME}
   password: ${MQTT_PASSWORD}
+  inbound-topic: ${MQTT_INBOUND_TOPIC:sys/product/+/status,thing/product/+/osd,thing/product/+/services_reply,robot/+/health,robot/+/response,robot/+/state,robot/+/job/state,robot/+/telemetry}
 
 ai-service:
   base-url: ${AI_SERVICE_BASE_URL}
@@ -36,3 +45,8 @@ ai-service:
 app:
   jwt:
     secret: ${JWT_SECRET}
+
+    mqtt-secret: ${JWT_MQTT_SECRET}
+    mqtt-access-token-expiration-seconds: ${JWT_MQTT_ACCESS_TOKEN_EXPIRATION_SECONDS:846000}
+    mqtt-refresh-token-expiration-seconds: ${JWT_MQTT_REFRESH_TOKEN_EXPIRATION_SECONDS:2592000}
+    mqtt-issuer: ${JWT_MQTT_ISSUER:DJI}

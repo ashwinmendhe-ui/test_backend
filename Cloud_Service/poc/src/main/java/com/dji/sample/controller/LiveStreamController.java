@@ -7,11 +7,18 @@ import com.dji.sample.dto.response.StartStreamResponse;
 import com.dji.sample.dto.response.StreamInfoResponse;
 import com.dji.sample.dto.response.StreamStatusResponse;
 import com.dji.sample.service.LiveStreamService;
+
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/live")
 @RequiredArgsConstructor
@@ -30,17 +37,35 @@ public class LiveStreamController {
                 .build();
     }
 
-    @PostMapping("/streams/stop")
-    public ApiResponse<StreamInfoResponse> stopStream(
-            @RequestBody StopStreamRequest request
-    ) {
+   @PostMapping("/streams/stop")
+        public ApiResponse<StreamInfoResponse> stopStream(
+                @RequestBody StopStreamRequest request,
+                HttpServletRequest httpRequest
+        ) {
+        Authentication authentication =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        log.warn(
+                "[STREAM-STOP-REQUEST] deviceSn={}, user={}, remoteAddr={}, userAgent={}, referer={}",
+                request.getDeviceSn(),
+                authentication != null
+                        ? authentication.getName()
+                        : "anonymous",
+                httpRequest.getRemoteAddr(),
+                httpRequest.getHeader("User-Agent"),
+                httpRequest.getHeader("Referer")
+        );
+
         return ApiResponse.<StreamInfoResponse>builder()
                 .success(true)
                 .message("Stream stopped successfully")
                 .data(liveStreamService.stopStream(request))
                 .build();
-    }
-
+        }
+    
+    
     @GetMapping("/stream-info/{streamId}")
         public ApiResponse<StreamInfoResponse> getStreamInfo(
                 @PathVariable String streamId
