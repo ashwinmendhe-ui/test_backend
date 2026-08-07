@@ -21,6 +21,8 @@ import java.util.HashMap;
 import java.util.Map;
 import com.dji.sdk.mqtt.services.ServicesReplyHandler;
 import org.springframework.messaging.support.MessageBuilder;
+
+import com.dji.sample.service.DeviceTelemetryHistoryService;
 import com.dji.sample.service.DeviceWebSocketPublisher;
 import com.dji.sdk.mqtt.ChannelName;
 import org.springframework.messaging.MessageChannel;
@@ -40,6 +42,7 @@ public class LocalMqttMessageHandler {
     private final IDeviceRedisService deviceRedisService;
     private final ServicesReplyHandler servicesReplyHandler;
     private final DeviceWebSocketPublisher webSocketPublisher;
+    private final DeviceTelemetryHistoryService telemetryHistoryService;
 
     @Resource(name = ChannelName.INBOUND_STATUS)
     private MessageChannel djiInboundStatusChannel;
@@ -156,6 +159,10 @@ public class LocalMqttMessageHandler {
 
         deviceRedisService.setDeviceOnlineBySn(deviceSn, 120);
         deviceRedisService.setDeviceTelemetry(deviceSn, telemetryJson);
+            telemetryHistoryService.recordTelemetry(
+                    deviceSn,
+                    telemetry
+            );
 
         webSocketPublisher.publishDashboardRefresh(deviceSn, "dji-osd");
         log.info("[MQTT][DJI][OSD][WS] Dashboard refresh published. deviceSn={}", deviceSn);

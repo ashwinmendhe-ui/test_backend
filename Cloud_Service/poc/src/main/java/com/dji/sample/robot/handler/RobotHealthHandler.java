@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import com.dji.sample.service.DeviceWebSocketPublisher;
+import com.dji.sample.service.DeviceTelemetryHistoryService;
 
 @Slf4j
 @Component
@@ -20,6 +21,8 @@ public class RobotHealthHandler {
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final DeviceWebSocketPublisher webSocketPublisher;
+    private final DeviceTelemetryHistoryService telemetryHistoryService;
+
 
     public void handle(String deviceSn, String payload) {
         try {
@@ -65,14 +68,25 @@ public class RobotHealthHandler {
             telemetry.put("timestamp", root.path("timestamp").asText(null));
 
             redisTemplate.opsForValue().set(
-                    "robot:" + deviceSn + ":telemetry",
-                    objectMapper.writeValueAsString(telemetry),
-                    Duration.ofSeconds(120)
-            );
+                        "robot:" + deviceSn + ":telemetry",
+                        objectMapper.writeValueAsString(telemetry),
+                        Duration.ofSeconds(120)
+                );
 
-            log.info("Robot telemetry saved from health. deviceSn={}", deviceSn);
-            webSocketPublisher.publishDashboardRefresh(deviceSn, "robot-health");
+                telemetryHistoryService.recordTelemetry(
+                        deviceSn,
+                        telemetry
+                );
 
+                log.info(
+                        "Robot telemetry saved from health. deviceSn={}",
+                        deviceSn
+                );
+
+                webSocketPublisher.publishDashboardRefresh(
+                        deviceSn,
+                        "robot-health"
+                );
         } catch (Exception e) {
             log.error("Failed to handle robot health. deviceSn={}, payload={}", deviceSn, payload, e);
         }
