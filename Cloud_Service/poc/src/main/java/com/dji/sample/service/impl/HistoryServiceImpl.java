@@ -242,6 +242,7 @@ public class HistoryServiceImpl implements HistoryService {
                 .totalRecognition(totalRecognition)
                 .createdAt(OffsetDateTime.now())
                 .videoStatus("AVAILABLE")
+                .sessionId(request.getSessionId())
                 .build();
 
         ReportHistory saved = reportHistoryRepository.save(history);

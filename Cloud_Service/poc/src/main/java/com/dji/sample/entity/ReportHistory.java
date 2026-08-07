@@ -62,6 +62,9 @@ public class ReportHistory {
     @Column(name = "video_status", nullable = false)
     private String videoStatus;
 
+    @Column(name = "session_id")
+    private UUID sessionId;
+
     @PrePersist
     public void prePersist() {
         if (historyId == null) {

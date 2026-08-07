@@ -1,11 +1,13 @@
 package com.dji.sample.controller;
 
 import com.dji.sample.dto.response.PlaybackListResponse;
+import com.dji.sample.dto.response.PlaybackTelemetryResponse;
 import com.dji.sample.service.PlaybackService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/playback")
@@ -23,4 +25,11 @@ public class PlaybackController {
     ) {
         return playbackService.getList(companyId, siteId, deviceSn, missionId);
     }
+
+    @GetMapping("/{sessionId}/telemetry")
+        public List<PlaybackTelemetryResponse> getTelemetry(
+                @PathVariable UUID sessionId
+        ) {
+            return playbackService.getTelemetry(sessionId);
+        }
 }
