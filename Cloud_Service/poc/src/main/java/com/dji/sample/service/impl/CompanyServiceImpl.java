@@ -130,45 +130,68 @@ public List<CompanyResponse> searchCompanies(String keyword) {
     }
 
     @Override
-    @Transactional
-    public void deleteCompany(UUID id) {
-        Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new RuntimeException("Company not found"));
+@Transactional
+public void deleteCompany(UUID id) {
+    Company company = companyRepository.findByCompanyIdAndDeletedAtIsNull(id)
+            .orElseThrow(() -> new RuntimeException("Company not found"));
 
-        List<User> users = userRepository.findByCompanyIdAndDeletedAtIsNull(id);
-        for (User user : users) {
-            user.setCompanyId(null);
-            userRepository.save(user);
-        }
+    OffsetDateTime now = OffsetDateTime.now();
 
-        List<Site> sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(id);
-        for (Site site : sites) {
-            site.setCompanyId(null);
-            siteRepository.save(site);
-        }
+    // 1. Soft-delete users under the company
+    List<User> users = userRepository.findByCompanyIdAndDeletedAtIsNull(id);
 
-        List<Mission> missions = missionRepository.findByCompanyIdAndDeletedAtIsNull(id);
-        for (Mission mission : missions) {
-            mission.setCompanyId(null);
-            mission.setSiteId(null);
-            missionRepository.save(mission);
-        }
+    for (User user : users) {
+        // Same behavior as UserServiceImpl.deleteUser()
+        userRoleRepository.deleteByUserId(user.getUserId());
 
-        List<Device> devices =
-        deviceRepository.findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(id);
+        user.setDeletedAt(now);
+        user.setIsActive(false);
 
-        for (Device device : devices) {
-            device.setCompany(null);
-            device.setSite(null);
-            device.setStatus("INACTIVE");
-            deviceRepository.save(device);
-        }
-
-        company.setDeletedAt(OffsetDateTime.now());
-        company.setStatus("INACTIVE");
-        companyRepository.save(company);
+        // Keep companyId.
+        // Do NOT set companyId to null because DB column is NOT NULL.
+        userRepository.save(user);
     }
 
+    // 2. Soft-delete sites under the company
+    List<Site> sites =
+            siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(id);
+
+    for (Site site : sites) {
+        site.setDeletedAt(now);
+
+        // Keep companyId for historical/reference integrity.
+        siteRepository.save(site);
+    }
+
+    // 3. Soft-delete missions under the company
+    List<Mission> missions =
+            missionRepository.findByCompanyIdAndDeletedAtIsNull(id);
+
+    for (Mission mission : missions) {
+        mission.setDeletedAt(now);
+
+        // Keep companyId and siteId.
+        missionRepository.save(mission);
+    }
+
+    // 4. Soft-delete devices under the company
+    List<Device> devices =
+            deviceRepository.findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(id);
+
+    for (Device device : devices) {
+        device.setDeletedAt(now);
+        device.setStatus("INACTIVE");
+
+        // Keep company and site relationship.
+        deviceRepository.save(device);
+    }
+
+    // 5. Soft-delete the company itself
+    company.setDeletedAt(now);
+    company.setStatus("INACTIVE");
+
+    companyRepository.save(company);
+}
     private User getCurrentUser() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
