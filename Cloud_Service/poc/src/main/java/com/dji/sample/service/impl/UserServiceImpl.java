@@ -105,27 +105,26 @@ public class UserServiceImpl implements UserService {
         User user = new User();
 
         String username = request.getUsername() != null ? request.getUsername().trim() : "";
-        String email = request.getEmail() != null ? request.getEmail().trim() : "";
+            String email = request.getEmail() != null ? request.getEmail().trim() : "";
 
-        if (username.isBlank()) {
-            throw new RuntimeException("Username is required");
-        }
+            if (username.isBlank()) {
+                throw new RuntimeException("Username is required");
+            }
 
-        if (email.isBlank()) {
-            throw new RuntimeException("Email is required");
-        }
+            if (email.isBlank()) {
+                throw new RuntimeException("Email is required");
+            }
 
-        if (userRepository.existsByUsernameAndDeletedAtIsNull(request.getUsername())) {
-            throw new RuntimeException("Username already exists");
-        }
+            if (userRepository.existsByUsernameAndDeletedAtIsNull(username)) {
+                throw new RuntimeException("Username already exists");
+            }
 
-        if (userRepository.existsByEmailAndDeletedAtIsNull(request.getEmail())) {
-            throw new RuntimeException("Email already exists");
-        }
+            if (userRepository.existsByEmailAndDeletedAtIsNull(email)) {
+                throw new RuntimeException("Email already exists");
+            }
 
-        user.setUsername(request.getUsername());
-        user.setEmail(request.getEmail());
-
+            user.setUsername(username);
+            user.setEmail(email);
         user.setFullName(
                 request.getFullName() != null && !request.getFullName().isBlank()
                         ? request.getFullName()
