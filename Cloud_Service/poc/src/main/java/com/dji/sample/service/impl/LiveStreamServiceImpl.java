@@ -27,6 +27,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import com.dji.sample.drone.model.StreamSource;
 import com.dji.sample.drone.service.StreamSourceResolver;
+import com.dji.sample.entity.Mission;
+import com.dji.sample.repository.MissionRepository;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -48,7 +50,7 @@ public class LiveStreamServiceImpl implements LiveStreamService {
     private final DeviceWebSocketPublisher webSocketPublisher;
     private final StreamCleanupService streamCleanupService;
     private final StreamSourceResolver streamSourceResolver;
-    
+    private final MissionRepository missionRepository;
 
     @Value("${ai-service.rtmp-url}")
     private String rtmpBaseUrl;
@@ -65,7 +67,18 @@ public StartStreamResponse startStream(StartStreamRequest request) {
                     .orElseThrow(() ->
                             new RuntimeException("Device not found")
                     );
+    String missionName = "";
 
+        if (request.getMissionId() != null) {
+        Mission mission =
+                missionRepository
+                        .findByMissionIdAndDeletedAtIsNull(request.getMissionId())
+                        .orElseThrow(() ->
+                                new RuntimeException("Mission not found")
+                        );
+
+        missionName = mission.getMissionName();
+        }
     StreamSource streamSource =
         streamSourceResolver.resolve(request, device);
 
@@ -224,7 +237,7 @@ public StartStreamResponse startStream(StartStreamRequest request) {
 
         parameters.put(
                 "patrol_route",
-                "TestforGO2"
+                missionName
         );
 
         Map<String, Object> robotJobPayload =
@@ -306,11 +319,7 @@ public StartStreamResponse startStream(StartStreamRequest request) {
                                     : ""
                     )
                     .missionId(request.getMissionId())
-                    .missionName(
-                            request.getMissionId() != null
-                                    ? request.getMissionId().toString()
-                                    : ""
-                    )
+                    .missionName(missionName)
                     .userId(currentUserId)
                     .userName("admin")
                     .emails(List.of())
