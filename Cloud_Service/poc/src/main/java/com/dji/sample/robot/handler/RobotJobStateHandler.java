@@ -2,6 +2,7 @@ package com.dji.sample.robot.handler;
 
 import com.dji.sample.robot.entity.RobotJobStateData;
 import com.dji.sample.service.DeviceWebSocketPublisher;
+import com.dji.sample.service.IDeviceRedisService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.Set;
 import com.dji.sample.repository.LiveStreamSessionRepository;
+import com.dji.sample.service.IDeviceRedisService;
 
 @Slf4j
 @Component
@@ -21,6 +23,7 @@ public class RobotJobStateHandler {
     private final StringRedisTemplate stringRedisTemplate;
     private final DeviceWebSocketPublisher webSocketPublisher;
     private final LiveStreamSessionRepository liveStreamSessionRepository;
+    private final IDeviceRedisService deviceRedisService;
 
     public void handle(String deviceSn, String payload) {
         try {
@@ -77,22 +80,27 @@ public class RobotJobStateHandler {
 
 
                 boolean hasActiveSession = liveStreamSessionRepository
-                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(deviceSn, "ACTIVE")
+                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
+                                deviceSn,
+                                "ACTIVE"
+                        )
                         .isPresent();
 
-                if (!hasActiveSession) {
+                boolean isDeviceOnline =
+                        deviceRedisService.getDeviceOnline(deviceSn) != null;
 
-                    /*
-                    * Preserve the robot-reported active jobId so orphan cleanup can
-                    * cancel the physical robot job even when the DB session is no
-                    * longer ACTIVE.
-                    *
-                    * Do not preserve working/status/mission values because those
-                    * would make the dashboard incorrectly remain in working state.
-                    */
+                if (!hasActiveSession || !isDeviceOnline) {
+
                     Duration orphanJobTtl = Duration.ofMinutes(10);
 
-                    if (jobId != null
+                    /*
+                    * Preserve jobId only when robot is still online but DB session
+                    * has disappeared. This allows orphan cleanup to cancel the
+                    * physical robot job.
+                    */
+                    if (isDeviceOnline
+                            && !hasActiveSession
+                            && jobId != null
                             && status != null
                             && "RUNNING".equalsIgnoreCase(status)) {
 
@@ -108,6 +116,7 @@ public class RobotJobStateHandler {
                                 jobId,
                                 status
                         );
+
                     } else {
                         stringRedisTemplate.delete(jobKey);
                     }
@@ -117,10 +126,12 @@ public class RobotJobStateHandler {
                     stringRedisTemplate.delete(missionKey);
 
                     log.warn(
-                            "Ignoring robot working state because no ACTIVE session exists. deviceSn={}, jobId={}, status={}",
+                            "Ignoring robot working state. deviceSn={}, jobId={}, status={}, hasActiveSession={}, isDeviceOnline={}",
                             deviceSn,
                             jobId,
-                            status
+                            status,
+                            hasActiveSession,
+                            isDeviceOnline
                     );
 
                     return;

@@ -312,67 +312,94 @@ public class DeviceServiceImpl implements DeviceService {
         }
 
     private DeviceResponse toResponse(Device device) {
-        Company company = device.getCompany();
-        Site site = device.getSite();
+    Company company = device.getCompany();
+    Site site = device.getSite();
 
-        UUID missionId = null;
-        String missionName = null;
-        boolean hasActiveStream = false;
+    UUID missionId = null;
+    String missionName = null;
 
-        if (device.getDeviceSn() != null) {
-            String streamDeviceSn = resolveStreamDeviceSn(device.getDeviceSn());
+    String responseStatus = "offline";
 
-            var activeSession = liveStreamSessionRepository
-                    .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                            streamDeviceSn,
-                            "ACTIVE"
-                    );
+    String deviceSn = device.getDeviceSn();
 
-    hasActiveStream = activeSession.isPresent();
+    boolean isOnline =
+            deviceSn != null
+                    && !deviceSn.isBlank()
+                    && deviceRedisService.getDeviceOnline(deviceSn) != null;
 
-    if (activeSession.isPresent() && activeSession.get().getMissionId() != null) {
-        missionId = activeSession.get().getMissionId();
+    /*
+     * State rule:
+     *
+     * OFFLINE
+     *   -> status = offline
+     *   -> mission = null
+     *
+     * ONLINE + no ACTIVE stream
+     *   -> status = online
+     *   -> mission = null
+     *
+     * ONLINE + ACTIVE stream
+     *   -> status = working
+     *   -> mission = active session mission
+     */
+    if (isOnline) {
 
-        Mission mission = missionRepository
-                .findByMissionIdAndDeletedAtIsNull(missionId)
-                .orElse(null);
+        responseStatus = "online";
 
-        missionName = mission != null ? mission.getMissionName() : null;
-    }
-}
+        String streamDeviceSn = resolveStreamDeviceSn(deviceSn);
 
+        var activeSession =
+                liveStreamSessionRepository
+                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
+                                streamDeviceSn,
+                                "ACTIVE"
+                        );
 
-        String responseStatus = "offline";
+        if (activeSession.isPresent()) {
 
+            responseStatus = "working";
 
-        if (device.getDeviceSn() != null
-                && deviceRedisService.getDeviceOnline(device.getDeviceSn()) != null) {
+            if (activeSession.get().getMissionId() != null) {
+                missionId = activeSession.get().getMissionId();
 
-            responseStatus = hasActiveStream
-                    ? "working"
-                    : "online";
+                Mission mission =
+                        missionRepository
+                                .findByMissionIdAndDeletedAtIsNull(missionId)
+                                .orElse(null);
+
+                missionName =
+                        mission != null
+                                ? mission.getMissionName()
+                                : null;
+            }
         }
-
-
-        return DeviceResponse.builder()
-                .deviceId(device.getDeviceId())
-                .deviceName(device.getDeviceName())
-                .companyId(company != null ? company.getCompanyId() : null)
-                .companyName(company != null ? company.getName() : null)
-                .siteId(site != null ? site.getSiteId() : null)
-                .siteName(site != null ? site.getName() : null)
-                .missionId(missionId)
-                .missionName(missionName)
-                .deviceType(device.getDeviceType())
-                .brandName(device.getBrandName())
-                .model(device.getModel())
-                .deviceSn(device.getDeviceSn())
-                .description(device.getDescription())
-                .status(responseStatus)
-                .createdAt(DateTimeUtil.formatKst(device.getCreatedAt()))
-                .updatedAt(DateTimeUtil.formatKst(device.getUpdatedAt()))
-                .createdDate(DateTimeUtil.formatKst(device.getCreatedAt()))
-                .telemetry(getTelemetryResponse(device.getDeviceSn()))
-                .build();
     }
+
+    return DeviceResponse.builder()
+            .deviceId(device.getDeviceId())
+            .deviceName(device.getDeviceName())
+            .companyId(company != null ? company.getCompanyId() : null)
+            .companyName(company != null ? company.getName() : null)
+            .siteId(site != null ? site.getSiteId() : null)
+            .siteName(site != null ? site.getName() : null)
+
+            .missionId(missionId)
+            .missionName(missionName)
+
+            .deviceType(device.getDeviceType())
+            .brandName(device.getBrandName())
+            .model(device.getModel())
+            .deviceSn(deviceSn)
+            .description(device.getDescription())
+
+            .status(responseStatus)
+
+            .createdAt(DateTimeUtil.formatKst(device.getCreatedAt()))
+            .updatedAt(DateTimeUtil.formatKst(device.getUpdatedAt()))
+            .createdDate(DateTimeUtil.formatKst(device.getCreatedAt()))
+
+            .telemetry(getTelemetryResponse(deviceSn))
+
+            .build();
+}
 }
