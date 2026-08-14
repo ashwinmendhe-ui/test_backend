@@ -19,6 +19,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.dji.sample.dto.response.PlaybackOptionResponse;
+import com.dji.sample.entity.Device;
+import com.dji.sample.entity.Mission;
+import com.dji.sample.repository.DeviceRepository;
+import com.dji.sample.repository.MissionRepository;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class PlaybackService {
@@ -26,6 +35,8 @@ public class PlaybackService {
     private final ReportHistoryRepository reportHistoryRepository;
     private final DeviceTelemetryHistoryRepository deviceTelemetryHistoryRepository;
     private final LiveStreamSessionRepository liveStreamSessionRepository;
+    private final DeviceRepository deviceRepository;
+    private final MissionRepository missionRepository;
 
     public List<PlaybackListResponse> getList(
             String companyId,
@@ -97,6 +108,94 @@ public class PlaybackService {
                 )
                 .toList();
     }
+    
+    
+    public List<PlaybackOptionResponse> getOptions(
+        String companyId,
+        String siteId
+        ) {
+            Specification<ReportHistory> spec = (root, query, cb) -> {
+                List<Predicate> predicates = new ArrayList<>();
+
+                predicates.add(cb.isNotNull(root.get("playbackUrl")));
+                predicates.add(cb.notEqual(root.get("playbackUrl"), ""));
+
+                if (companyId != null && !companyId.isBlank()) {
+                    predicates.add(
+                            cb.equal(
+                                    root.get("companyId"),
+                                    UUID.fromString(companyId)
+                            )
+                    );
+                }
+
+                if (siteId != null && !siteId.isBlank()) {
+                    predicates.add(
+                            cb.equal(
+                                    root.get("siteId"),
+                                    UUID.fromString(siteId)
+                            )
+                    );
+                }
+
+                return cb.and(predicates.toArray(new Predicate[0]));
+            };
+
+            Map<String, PlaybackOptionResponse> options = new LinkedHashMap<>();
+
+            for (ReportHistory history : reportHistoryRepository.findAll(spec)) {
+
+                String deviceSn = history.getDeviceSn();
+                UUID missionId = history.getMissionId();
+
+                if (deviceSn == null || deviceSn.isBlank()) {
+                    continue;
+                }
+
+                String key =
+                        deviceSn + "|" +
+                        (missionId != null ? missionId.toString() : "");
+
+                if (options.containsKey(key)) {
+                    continue;
+                }
+
+                Device device = deviceRepository
+                        .findByDeviceSnAndDeletedAtIsNull(deviceSn)
+                        .orElse(null);
+
+                Mission mission = missionId != null
+                        ? missionRepository
+                            .findByMissionIdAndDeletedAtIsNull(missionId)
+                            .orElse(null)
+                        : null;
+
+                options.put(
+                        key,
+                        PlaybackOptionResponse.builder()
+                                .deviceSn(deviceSn)
+                                .deviceName(
+                                        device != null
+                                                ? device.getDeviceName()
+                                                : deviceSn
+                                )
+                                .missionId(missionId)
+                                .missionName(
+                                        mission != null
+                                                ? mission.getMissionName()
+                                                : missionId != null
+                                                    ? missionId.toString()
+                                                    : ""
+                                )
+                                .build()
+                );
+            }
+
+            return new ArrayList<>(options.values());
+        }
+
+
+
     
     private PlaybackListResponse toResponse(ReportHistory history) {
         String segment = DateTimeUtil.formatKst(history.getCreatedAt());

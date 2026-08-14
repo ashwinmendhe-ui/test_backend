@@ -5,7 +5,7 @@ import com.dji.sample.dto.response.PlaybackTelemetryResponse;
 import com.dji.sample.service.PlaybackService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
+import com.dji.sample.dto.response.PlaybackOptionResponse;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,7 +25,13 @@ public class PlaybackController {
     ) {
         return playbackService.getList(companyId, siteId, deviceSn, missionId);
     }
-
+    @GetMapping("/options")
+        public List<PlaybackOptionResponse> getOptions(
+                @RequestParam(required = false) String companyId,
+                @RequestParam(required = false) String siteId
+        ) {
+            return playbackService.getOptions(companyId, siteId);
+        }
     @GetMapping("/{sessionId}/telemetry")
         public List<PlaybackTelemetryResponse> getTelemetry(
                 @PathVariable UUID sessionId
