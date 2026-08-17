@@ -37,24 +37,64 @@ public class SiteServiceImpl implements SiteService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
 
-    @Override
+   @Override
+    @Transactional(readOnly = true)
     public List<SiteResponse> searchSites(UUID companyId) {
         User currentUser = getCurrentUser();
+
+        boolean isSysAdmin =
+                userRoleRepository.existsByUserIdAndRoleId(
+                        currentUser.getUserId(),
+                        1
+                );
+
+        boolean isCompanyUser =
+                userRoleRepository.existsByUserIdAndRoleId(
+                        currentUser.getUserId(),
+                        3
+                );
+
         List<Site> sites;
 
-        if (isSysAdmin(currentUser)) {
+        if (isSysAdmin) {
             if (companyId != null) {
-                sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
+                sites =
+                        siteRepository
+                                .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(
+                                        companyId
+                                );
             } else {
-                sites = siteRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
+                sites =
+                        siteRepository
+                                .findByDeletedAtIsNullOrderByCreatedAtDesc();
             }
+
+        } else if (isCompanyUser) {
+
+            UUID currentCompanyId = currentUser.getCompanyId();
+
+            sites = currentUser.getSites() == null
+                    ? List.of()
+                    : currentUser.getSites().stream()
+                            .filter(site -> site.getDeletedAt() == null)
+                            .filter(site ->
+                                    currentCompanyId != null &&
+                                    currentCompanyId.equals(site.getCompanyId())
+                            )
+                            .toList();
+
         } else {
+
             UUID effectiveCompanyId = currentUser.getCompanyId();
 
             if (effectiveCompanyId == null) {
                 sites = List.of();
             } else {
-                sites = siteRepository.findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(effectiveCompanyId);
+                sites =
+                        siteRepository
+                                .findByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(
+                                        effectiveCompanyId
+                                );
             }
         }
 
@@ -62,6 +102,7 @@ public class SiteServiceImpl implements SiteService {
                 .map(this::toResponse)
                 .toList();
     }
+   
     @Override
     public SiteResponse getSiteById(UUID id) {
         Site site = siteRepository.findBySiteIdAndDeletedAtIsNull(id)

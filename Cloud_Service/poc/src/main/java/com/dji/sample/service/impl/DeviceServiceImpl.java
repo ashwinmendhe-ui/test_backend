@@ -63,50 +63,73 @@ public class DeviceServiceImpl implements DeviceService {
 
         boolean isSysAdmin = userRoleRepository.existsByUserIdAndRoleId(userId, 1);
         boolean isCompanyUser = userRoleRepository.existsByUserIdAndRoleId(userId, 3);
-        boolean siteScope = "site".equalsIgnoreCase(scope);
+        
         List<Device> devices;
 
         if (isSysAdmin) {
-            devices = siteId != null
-                    ? deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId)
-                    : deviceRepository.findByDeletedAtIsNullOrderByCreatedAtDesc();
-        } else if (isCompanyUser && siteScope && siteId != null) {
 
-    boolean hasAssignedSite = currentUser.getSites() != null
-            && currentUser.getSites().stream()
-                    .anyMatch(site ->
-                            site.getDeletedAt() == null
-                                    && siteId.equals(site.getSiteId()));
+                devices = siteId != null
+                        ? deviceRepository
+                                .findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(
+                                        siteId
+                                )
+                        : deviceRepository
+                                .findByDeletedAtIsNullOrderByCreatedAtDesc();
 
-    if (!hasAssignedSite) {
-        devices = List.of();
-    } else {
-        devices = deviceRepository
-                .findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId);
-    }
+            } else if (isCompanyUser) {
 
-} else if (isCompanyUser && currentUser.getDevices() != null && !currentUser.getDevices().isEmpty()) {
+                UUID currentCompanyId = currentUser.getCompanyId();
 
-    devices = currentUser.getDevices().stream()
-            .filter(device -> device.getDeletedAt() == null)
-            .filter(device -> siteId == null
-                    || (device.getSite() != null
-                    && siteId.equals(device.getSite().getSiteId())))
-            .toList();
-} else {
-            UUID companyId = currentUser.getCompanyId();
+                devices = currentUser.getDevices() == null
+                        ? List.of()
+                        : currentUser.getDevices().stream()
+                                .filter(device -> device.getDeletedAt() == null)
+                                .filter(device ->
+                                        device.getCompany() != null &&
+                                        currentCompanyId != null &&
+                                        currentCompanyId.equals(
+                                                device.getCompany().getCompanyId()
+                                        )
+                                )
+                                .filter(device ->
+                                        siteId == null ||
+                                        (
+                                            device.getSite() != null &&
+                                            siteId.equals(
+                                                device.getSite().getSiteId()
+                                            )
+                                        )
+                                )
+                                .toList();
 
-            if (companyId == null) {
-                devices = List.of();
-            } else if (siteId != null) {
-                devices = deviceRepository.findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(siteId)
-                        .stream()
-                        .filter(device -> device.getCompany() != null && companyId.equals(device.getCompany().getCompanyId()))
-                        .toList();
             } else {
-                devices = deviceRepository.findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(companyId);
+
+                UUID companyId = currentUser.getCompanyId();
+
+                if (companyId == null) {
+                    devices = List.of();
+                } else if (siteId != null) {
+                    devices =
+                            deviceRepository
+                                    .findBySite_SiteIdAndDeletedAtIsNullOrderByCreatedAtDesc(
+                                            siteId
+                                    )
+                                    .stream()
+                                    .filter(device ->
+                                            device.getCompany() != null &&
+                                            companyId.equals(
+                                                    device.getCompany().getCompanyId()
+                                            )
+                                    )
+                                    .toList();
+                } else {
+                    devices =
+                            deviceRepository
+                                    .findByCompany_CompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(
+                                            companyId
+                                    );
+                }
             }
-        }
 
         return devices.stream()
                 .filter(device -> matchesKeyword(device, keyword))
