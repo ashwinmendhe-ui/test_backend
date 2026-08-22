@@ -22,7 +22,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import org.springframework.data.domain.PageRequest;
 
 @Slf4j
 @Service
@@ -40,9 +39,9 @@ public class HistoryServiceImpl implements HistoryService {
     private final ObjectMapper objectMapper;
     private static final long BOOKMARK_FPS = 30L;
     
-    @Override
+   @Override
     public List<HistoryListResponse> getList() {
-        return reportHistoryRepository.findByOrderByCreatedAtDesc(PageRequest.of(0, 20))
+        return reportHistoryRepository.findAllByOrderByCreatedAtDesc()
                 .stream()
                 .map(this::toListResponse)
                 .toList();
