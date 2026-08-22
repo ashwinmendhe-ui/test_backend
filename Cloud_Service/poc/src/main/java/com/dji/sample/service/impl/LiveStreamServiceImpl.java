@@ -86,43 +86,100 @@ public StartStreamResponse startStream(StartStreamRequest request) {
     String physicalStreamSn = streamSource.streamDeviceSn();
     String aiStreamId = buildAiStreamId(physicalStreamSn);
 
-    /*
-     * Prevent multiple ACTIVE DB sessions for the same physical stream.
-     */
-    boolean activeDeviceSessionExists =
-            liveStreamSessionRepository
-                    .existsByDeviceSnAndSessionStatus(
-                            physicalStreamSn,
-                            "ACTIVE"
-                    );
-
-    if (activeDeviceSessionExists) {
-        throw new RuntimeException(
-                "Device already has an active stream"
-        );
-    }
-
-    /*
-     * Prevent the same mission from being used by another ACTIVE session.
-     */
-    if (request.getMissionId() != null) {
-
-        boolean activeMissionSessionExists =
-                liveStreamSessionRepository
-                        .existsByMissionIdAndSessionStatus(
-                                request.getMissionId(),
-                                "ACTIVE"
-                        );
-
-        if (activeMissionSessionExists) {
-            throw new RuntimeException(
-                    "Mission already has an active stream"
-            );
-        }
-    }
 
     UUID currentUserId = getCurrentUserId();
 
+/*
+ * If this physical stream is already ACTIVE, do not start the
+ * robot/drone/AI pipeline again.
+ *
+ * Reuse the existing ACTIVE session so another tab/user can
+ * monitor the currently running mission.
+ */
+var activeSession =
+        liveStreamSessionRepository
+                .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
+                        physicalStreamSn,
+                        "ACTIVE"
+                );
+
+if (activeSession.isPresent()) {
+
+    LiveStreamSession existing =
+            activeSession.get();
+
+    /*
+     * A viewer must join the mission that is currently running.
+     */
+    if (request.getMissionId() != null &&
+            existing.getMissionId() != null &&
+            !request.getMissionId().equals(existing.getMissionId())) {
+
+        throw new RuntimeException(
+                "Device already has an active stream for another mission"
+        );
+    }
+
+    boolean isStarter =
+            currentUserId.equals(existing.getUserId());
+
+    String existingHlsUrl =
+            buildBackendHlsUrl(existing.getId());
+
+    log.info(
+            "[StreamViewer] Joining existing active stream. deviceSn={}, sessionId={}, starterUserId={}, currentUserId={}, isStarter={}",
+            physicalStreamSn,
+            existing.getId(),
+            existing.getUserId(),
+            currentUserId,
+            isStarter
+    );
+
+    return StartStreamResponse.builder()
+            .sessionId(existing.getId())
+            .streamId(existing.getId())
+            .id(existing.getId())
+            .playbackUrl(existingHlsUrl)
+            .sessionStatus(existing.getSessionStatus())
+            .status(existing.getSessionStatus())
+            .viewerCount(1)
+            .startTime(existing.getStartedAt())
+
+            /*
+             * Same user in another tab may still stop their stream.
+             * A different user is observer-only.
+             */
+            .canStop(isStarter)
+
+            /*
+             * Only the original starter maintains heartbeat.
+             * An observer must not own/extend another user's session.
+             */
+            .isSendHeartBeat(isStarter)
+            .joinedExisting(true)
+            .build();
+}
+
+/*
+ * No ACTIVE stream exists.
+ * Keep the existing protection against the same mission being used
+ * by another physical device/session.
+ */
+if (request.getMissionId() != null) {
+
+    boolean activeMissionSessionExists =
+            liveStreamSessionRepository
+                    .existsByMissionIdAndSessionStatus(
+                            request.getMissionId(),
+                            "ACTIVE"
+                    );
+
+    if (activeMissionSessionExists) {
+        throw new RuntimeException(
+                "Mission already has an active stream"
+        );
+    }
+}
     String videoId = streamSource.videoId();
     String gatewaySn = streamSource.gatewaySn();
     String payloadIndex = streamSource.payloadIndex();
@@ -465,8 +522,9 @@ public StartStreamResponse startStream(StartStreamRequest request) {
             .viewerCount(1)
             .startTime(saved.getStartedAt())
             .canStop(true)
-            .isSendHeartBeat(true)
-            .build();
+        .isSendHeartBeat(true)
+        .joinedExisting(false)
+        .build();
 }
         
     

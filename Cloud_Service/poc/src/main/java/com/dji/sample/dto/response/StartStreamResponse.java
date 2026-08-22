@@ -30,4 +30,5 @@ public class StartStreamResponse {
     private Boolean canStop;
 
     private Boolean isSendHeartBeat;
+    private Boolean joinedExisting;
 }
