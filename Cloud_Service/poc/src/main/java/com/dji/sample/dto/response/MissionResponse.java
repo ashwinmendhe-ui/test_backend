@@ -21,6 +21,8 @@ public class MissionResponse {
 
     private String siteName;
 
+    private String location;
+
     private String missionName;
 
     // FE compatibility alias

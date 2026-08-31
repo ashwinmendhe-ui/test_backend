@@ -30,6 +30,9 @@ public class Mission {
     @Column(name = "site_id")
     private UUID siteId;
 
+    @Column(name = "location")
+    private String location;
+
     @Column(name = "mission_name", nullable = false)
     private String missionName;
 

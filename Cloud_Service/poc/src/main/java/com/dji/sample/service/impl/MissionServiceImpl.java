@@ -66,12 +66,13 @@ public class MissionServiceImpl implements MissionService {
 
         return missions.stream()
                 .filter(mission -> normalizedKeyword.isEmpty()
-                        || contains(mission.getMissionName(), normalizedKeyword)
-                        || contains(resolveCompanyName(mission.getCompanyId()), normalizedKeyword)
-                        || contains(resolveSiteName(mission.getSiteId()), normalizedKeyword)
-                        || contains(mission.getMissionType(), normalizedKeyword)
-                        || contains(mission.getDeviceType(), normalizedKeyword)
-                        || contains(mission.getFile(), normalizedKeyword))
+                    || contains(mission.getMissionName(), normalizedKeyword)
+                    || contains(resolveCompanyName(mission.getCompanyId()), normalizedKeyword)
+                    || contains(resolveSiteName(mission.getSiteId()), normalizedKeyword)
+                    || contains(mission.getLocation(), normalizedKeyword)
+                    || contains(mission.getMissionType(), normalizedKeyword)
+                    || contains(mission.getDeviceType(), normalizedKeyword)
+                    || contains(mission.getFile(), normalizedKeyword))
                 .sorted(Comparator.comparing(Mission::getCreatedAt).reversed())
                 .map(this::toResponse)
                 .toList();
@@ -146,6 +147,33 @@ public MissionResponse getById(UUID id) {
     return toResponse(mission);
 }
 
+private String normalizeText(String value) {
+    if (value == null || value.isBlank()) {
+        return null;
+    }
+
+    return value.trim();
+}
+
+    private String normalizeDeviceType(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+
+        if ("DRONE".equalsIgnoreCase(trimmed)) {
+            return "Drone";
+        }
+
+        if ("ROBOT".equalsIgnoreCase(trimmed)
+                || "Quadruped Robot".equalsIgnoreCase(trimmed)) {
+            return "Robot";
+        }
+
+        return trimmed;
+    }
+
     @Override
     public MissionResponse create(MissionRequest request) {
         String deviceType = normalizeDeviceType(request.getDeviceType());
@@ -153,6 +181,7 @@ public MissionResponse getById(UUID id) {
         Mission mission = Mission.builder()
                 .companyId(request.getCompanyId())
                 .siteId(request.getSiteId())
+                .location(normalizeText(request.getLocation()))
                 .missionName(request.getMissionName())
                 .missionType(request.getMissionType())
                 .deviceType(deviceType)
@@ -190,6 +219,7 @@ public MissionResponse getById(UUID id) {
 
         mission.setCompanyId(request.getCompanyId());
         mission.setSiteId(request.getSiteId());
+        mission.setLocation(normalizeText(request.getLocation()));
         mission.setMissionName(request.getMissionName());
         mission.setMissionType(request.getMissionType());
         mission.setDeviceType(deviceType);
@@ -285,24 +315,7 @@ public MissionResponse getById(UUID id) {
             return null;
         }
     }
-    private String normalizeDeviceType(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-
-        String trimmed = value.trim();
-
-        if ("DRONE".equalsIgnoreCase(trimmed)) {
-            return "Drone";
-        }
-
-        if ("ROBOT".equalsIgnoreCase(trimmed)
-                || "Quadruped Robot".equalsIgnoreCase(trimmed)) {
-            return "Robot";
-        }
-
-        return trimmed;
-    }
+    
     private User getCurrentUser() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
@@ -326,6 +339,7 @@ private boolean isSysAdmin(User user) {
                 .companyName(resolveCompanyName(mission.getCompanyId()))
                 .siteId(mission.getSiteId())
                 .siteName(resolveSiteName(mission.getSiteId()))
+                .location(mission.getLocation())
                 .missionName(mission.getMissionName())
                 .name(mission.getMissionName())
                 .missionType(mission.getMissionType())

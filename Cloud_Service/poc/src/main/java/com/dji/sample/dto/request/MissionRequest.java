@@ -11,6 +11,8 @@ public class MissionRequest {
 
     private UUID siteId;
 
+    private String location;
+
     private String missionName;
 
     private String missionType;
