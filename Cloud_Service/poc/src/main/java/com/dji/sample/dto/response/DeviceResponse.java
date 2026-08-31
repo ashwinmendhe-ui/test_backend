@@ -42,5 +42,6 @@ public class DeviceResponse {
     private String createdDate;
     private UUID missionId;
     private String missionName;
+    private String location;
     private RobotTelemetryResponse telemetry;
 }

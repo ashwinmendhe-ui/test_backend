@@ -340,6 +340,7 @@ public class DeviceServiceImpl implements DeviceService {
 
     UUID missionId = null;
     String missionName = null;
+    String location = null;
 
     String responseStatus = "offline";
 
@@ -390,10 +391,10 @@ public class DeviceServiceImpl implements DeviceService {
                                 .findByMissionIdAndDeletedAtIsNull(missionId)
                                 .orElse(null);
 
-                missionName =
-                        mission != null
-                                ? mission.getMissionName()
-                                : null;
+                if (mission != null) {
+                    missionName = mission.getMissionName();
+                    location = mission.getLocation();
+                }
             }
         }
     }
@@ -408,6 +409,7 @@ public class DeviceServiceImpl implements DeviceService {
 
             .missionId(missionId)
             .missionName(missionName)
+            .location(location)
 
             .deviceType(device.getDeviceType())
             .brandName(device.getBrandName())
