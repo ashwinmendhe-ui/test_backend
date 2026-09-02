@@ -11,4 +11,5 @@ public interface HistoryService {
     List<HistoryListResponse> getList();
     HistoryDetailResponse getDetail(UUID historyId);
     HistoryDetailResponse createHistory(CreateHistoryRequest request);
+    HistoryDetailResponse getDetailBySessionId(UUID sessionId);
 }

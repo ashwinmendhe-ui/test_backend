@@ -13,4 +13,8 @@ public interface ReportHistoryRepository extends JpaRepository<ReportHistory, UU
 
     Optional<ReportHistory> findByDeviceSnAndPlaybackUrl(String deviceSn, String playbackUrl);
     List<ReportHistory> findAllByOrderByCreatedAtDesc();
+
+    Optional<ReportHistory> findFirstBySessionIdOrderByCreatedAtDesc(
+        UUID sessionId
+);
 }

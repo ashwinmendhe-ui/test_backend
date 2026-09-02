@@ -49,61 +49,193 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public HistoryDetailResponse getDetail(UUID historyId) {
-        ReportHistory history = reportHistoryRepository.findById(historyId)
-                .orElseThrow(() -> new RuntimeException("History not found"));
+        ReportHistory history =
+                reportHistoryRepository.findById(historyId)
+                        .orElseThrow(() ->
+                                new RuntimeException("History not found")
+                        );
 
-        Site site = findSite(history.getSiteId());
-        Mission mission = findMission(history.getMissionId());
-        Device device = findDevice(history.getDeviceSn());
-        User user = findUser(history.getUserId());
-        Company company = findCompany(history.getCompanyId());
-        String deviceName = device != null ? device.getDeviceName() : history.getDeviceSn();
-        String userName = resolveUserName(user);
-        String metadataUrl = resolveMetadataUrl(history.getPlaybackUrl());
+        return buildDetail(history);
+    }
 
-        Map<String, Integer> labelCounts = loadLabelCounts(metadataUrl);
-        List<BookmarkResponse> bookmarks =
-        loadBookmarks(metadataUrl, history.getStartTime());
-        int calculatedTotalRecognition = !labelCounts.isEmpty()
-                ? labelCounts.values().stream().mapToInt(Integer::intValue).sum()
-                : bookmarks.size();
+    @Override
+    public HistoryDetailResponse getDetailBySessionId(
+            UUID sessionId
+    ) {
+        ReportHistory history =
+                reportHistoryRepository
+                        .findFirstBySessionIdOrderByCreatedAtDesc(
+                                sessionId
+                        )
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "History not found for session"
+                                )
+                        );
 
-        if ((history.getTotalRecognition() == null || history.getTotalRecognition() == 0)
-                && calculatedTotalRecognition > 0) {
-            history.setTotalRecognition(calculatedTotalRecognition);
-            reportHistoryRepository.save(history);
-        }
-            return HistoryDetailResponse.builder()
-            .deviceSn(history.getDeviceSn())
-            .siteName(site != null ? site.getName() : "")
+        return buildDetail(history);
+    }
+
+
+    private HistoryDetailResponse buildDetail(
+        ReportHistory history
+) {
+    Company company =
+            findCompany(history.getCompanyId());
+
+    Site site =
+            findSite(history.getSiteId());
+
+    Mission mission =
+            findMission(history.getMissionId());
+
+    Device device =
+            findDevice(history.getDeviceSn());
+
+    User user =
+            findUser(history.getUserId());
+
+    String deviceName =
+            device != null &&
+            device.getDeviceName() != null
+                    ? device.getDeviceName()
+                    : history.getDeviceSn();
+
+    String userName =
+            resolveUserName(user);
+
+    /*
+     * History playbackUrl may be the backend HLS proxy URL.
+     * Resolve it to the original AI/storage playback URL before
+     * loading info.json / bookmark.ndjson.
+     */
+    String metadataUrl =
+            resolveMetadataUrl(
+                    history.getPlaybackUrl()
+            );
+
+    Map<String, Integer> labelCounts =
+            loadLabelCounts(metadataUrl);
+
+    List<BookmarkResponse> bookmarks =
+            loadBookmarks(
+                    metadataUrl,
+                    history.getStartTime()
+            );
+
+    int calculatedTotalRecognition =
+            !labelCounts.isEmpty()
+                    ? labelCounts.values()
+                            .stream()
+                            .mapToInt(Integer::intValue)
+                            .sum()
+                    : bookmarks.size();
+
+    /*
+     * Important:
+     * Detection processing may still be completing when
+     * the history row is first created.
+     *
+     * If the finalized bookmark data later contains a
+     * different total, keep report_history synchronized.
+     */
+    if (!Objects.equals(
+            history.getTotalRecognition(),
+            calculatedTotalRecognition
+    )) {
+        history.setTotalRecognition(
+                calculatedTotalRecognition
+        );
+
+        reportHistoryRepository.save(history);
+    }
+
+    return HistoryDetailResponse.builder()
+            .deviceSn(
+                    history.getDeviceSn()
+            )
+
+            .companyId(
+                    history.getCompanyId()
+            )
+            .companyName(
+                    company != null &&
+                    company.getName() != null
+                            ? company.getName()
+                            : ""
+            )
+
+            .siteId(
+                    history.getSiteId()
+            )
+            .siteName(
+                    site != null &&
+                    site.getName() != null
+                            ? site.getName()
+                            : ""
+            )
+
+            .missionId(
+                    history.getMissionId()
+            )
+            .missionName(
+                    mission != null &&
+                    mission.getMissionName() != null
+                            ? mission.getMissionName()
+                            : ""
+            )
+
             .deviceName(deviceName)
-            .companyId(history.getCompanyId())
-            .companyName(company != null ? company.getName() : "")
-            .siteId(history.getSiteId())
-            .missionId(history.getMissionId())
             .robotName(deviceName)
-            .missionName(mission != null ? mission.getMissionName() : "")
+
             .userName(userName)
             .workerName(userName)
-            .startTime(format(history.getStartTime()))
-            .endTime(format(history.getEndTime()))
-            .totalTime(history.getTotalTime())
-            .totalRecognition(calculatedTotalRecognition)
-            .duration(history.getTotalTime())
+
+            .startTime(
+                    format(history.getStartTime())
+            )
+            .endTime(
+                    format(history.getEndTime())
+            )
+
+            .totalTime(
+                    history.getTotalTime()
+            )
+            .duration(
+                    history.getTotalTime()
+            )
+
             .distance("")
-            .playbackUrl(history.getPlaybackUrl())
+
+            .playbackUrl(
+                    history.getPlaybackUrl()
+            )
+
             .reportCreatedAt(
                     format(
                             history.getEndTime() != null
                                     ? history.getEndTime()
-                                    : history.getStartTime()
+                                    : history.getCreatedAt()
                     )
             )
-            .labelCounts(labelCounts)
-            .bookmarks(bookmarks)
-            .build();
-    }
 
+            .totalRecognition(
+                    calculatedTotalRecognition
+            )
+
+            .labelCounts(
+                    labelCounts
+            )
+
+            .bookmarks(
+                    bookmarks
+            )
+
+            .build();
+}
+    
+    
+    
     private HistoryListResponse toListResponse(ReportHistory history) {
         Company company = findCompany(history.getCompanyId());
         Site site = findSite(history.getSiteId());

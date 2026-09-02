@@ -22,10 +22,21 @@ public class HistoryController {
         return historyService.getList();
     }
 
+    @GetMapping("/session/{sessionId}")
+    public HistoryDetailResponse getDetailBySessionId(
+            @PathVariable UUID sessionId
+    ) {
+        return historyService.getDetailBySessionId(
+                sessionId
+        );
+    }
+    
     @GetMapping("/{id}")
     public HistoryDetailResponse getDetail(@PathVariable UUID id) {
         return historyService.getDetail(id);
     }
+
+    
 
     @PostMapping
     public HistoryDetailResponse createHistory(@RequestBody CreateHistoryRequest request) {
