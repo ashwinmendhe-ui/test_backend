@@ -1,5 +1,6 @@
 package com.dji.sample.robot.handler;
 
+import com.dji.sample.repository.LiveStreamSessionRepository;
 import com.dji.sample.robot.entity.RobotJobStateData;
 import com.dji.sample.service.DeviceWebSocketPublisher;
 import com.dji.sample.service.IDeviceRedisService;
@@ -9,10 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import java.time.Duration;
+
 import java.util.Set;
-import com.dji.sample.repository.LiveStreamSessionRepository;
-import com.dji.sample.service.IDeviceRedisService;
 
 @Slf4j
 @Component
@@ -31,19 +30,27 @@ public class RobotJobStateHandler {
             JsonNode data = root.has("data") ? root.path("data") : root;
 
             String jobId = firstText(data, "job_id", "jobId");
-            String status = firstText(data, "status", "job_status", "jobStatus");
-            String missionId = firstText(data, "mission_id", "missionId");
+            String status = firstText(
+                    data,
+                    "status",
+                    "job_status",
+                    "jobStatus"
+            );
+            String missionId = firstText(
+                    data,
+                    "mission_id",
+                    "missionId"
+            );
             String message = textOrNull(data, "message");
 
             log.info(
-                        "Parsed robot job state. deviceSn={}, jobId={}, status={}, missionId={}, rawData={}",
-                        deviceSn,
-                        jobId,
-                        status,
-                        missionId,
-                        data
-                );
-
+                    "Parsed robot job state. deviceSn={}, jobId={}, status={}, missionId={}, rawData={}",
+                    deviceSn,
+                    jobId,
+                    status,
+                    missionId,
+                    data
+            );
 
             RobotJobStateData jobState = new RobotJobStateData();
             jobState.setJobId(jobId);
@@ -51,11 +58,17 @@ public class RobotJobStateHandler {
             jobState.setMissionId(missionId);
             jobState.setMessage(message);
 
-            
-            String jobKey = "robot:" + deviceSn + ":jobId";
-            String localStatusKey = "robot:" + deviceSn + ":status";
-            String prodStatusKey = "status:" + deviceSn;
-            String missionKey = "robot:" + deviceSn + ":missionId";
+            String jobKey =
+                    "robot:" + deviceSn + ":jobId";
+
+            String localStatusKey =
+                    "robot:" + deviceSn + ":status";
+
+            String prodStatusKey =
+                    "status:" + deviceSn;
+
+            String missionKey =
+                    "robot:" + deviceSn + ":missionId";
 
             Set<String> terminalStates = Set.of(
                     "COMPLETED",
@@ -67,129 +80,289 @@ public class RobotJobStateHandler {
                     "IDLE"
             );
 
-            if (status != null && terminalStates.contains(status.toUpperCase())) {
+            String storedJobId =
+                    deviceRedisService.getRobotJobId(deviceSn);
+
+            boolean hasActiveSession =
+                    liveStreamSessionRepository
+                            .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
+                                    deviceSn,
+                                    "ACTIVE"
+                            )
+                            .isPresent();
+
+            boolean isDeviceOnline =
+                    deviceRedisService.getDeviceOnline(deviceSn) != null;
+
+            boolean matchesStoredJob =
+                    jobId != null
+                            && storedJobId != null
+                            && jobId.equals(storedJobId);
+
+            boolean isTerminal =
+                    status != null
+                            && terminalStates.contains(
+                                    status.toUpperCase()
+                            );
+
+            /*
+             * Terminal state.
+             *
+             * Protect the current job from a delayed terminal
+             * message belonging to an older robot job.
+             *
+             * Example:
+             *
+             *   old job A -> delayed STOPPED
+             *   new job B -> currently STARTING/RUNNING
+             *
+             * The delayed STOPPED for A must not clear B.
+             */
+            if (isTerminal) {
+
+                if (storedJobId != null
+                        && jobId != null
+                        && !matchesStoredJob) {
+
+                    log.warn(
+                            "Ignoring terminal state for stale robot job. deviceSn={}, incomingJobId={}, storedJobId={}, status={}",
+                            deviceSn,
+                            jobId,
+                            storedJobId,
+                            status
+                    );
+
+                    return;
+                }
 
                 stringRedisTemplate.delete(jobKey);
                 stringRedisTemplate.delete(localStatusKey);
                 stringRedisTemplate.delete(prodStatusKey);
                 stringRedisTemplate.delete(missionKey);
 
-                log.info("Robot job cleared. deviceSn={}, status={}", deviceSn, status);
+                log.info(
+                        "Robot job cleared. deviceSn={}, jobId={}, status={}",
+                        deviceSn,
+                        jobId,
+                        status
+                );
 
             } else {
 
+                /*
+                 * Protect the current job from a delayed non-terminal
+                 * message belonging to an older job.
+                 *
+                 * Example:
+                 *
+                 *   current Redis jobId = B
+                 *   delayed RUNNING arrives for job A
+                 *
+                 * A must never overwrite B.
+                 */
+                if (storedJobId != null
+                        && jobId != null
+                        && !matchesStoredJob) {
 
-                boolean hasActiveSession = liveStreamSessionRepository
-                        .findFirstByDeviceSnAndSessionStatusOrderByStartedAtDesc(
-                                deviceSn,
-                                "ACTIVE"
-                        )
-                        .isPresent();
+                    log.warn(
+                            "Ignoring active state for stale robot job. deviceSn={}, incomingJobId={}, storedJobId={}, status={}",
+                            deviceSn,
+                            jobId,
+                            storedJobId,
+                            status
+                    );
 
-                boolean isDeviceOnline =
-                        deviceRedisService.getDeviceOnline(deviceSn) != null;
+                    return;
+                }
 
-                if (!hasActiveSession || !isDeviceOnline) {
+                /*
+                 * If the physical robot is offline, a non-terminal
+                 * state such as RUNNING must not recreate stale
+                 * working state.
+                 */
+                if (!isDeviceOnline) {
 
-                    Duration orphanJobTtl = Duration.ofMinutes(10);
-
-                    /*
-                    * Preserve jobId only when robot is still online but DB session
-                    * has disappeared. This allows orphan cleanup to cancel the
-                    * physical robot job.
-                    */
-                    if (isDeviceOnline
-                            && !hasActiveSession
-                            && jobId != null
-                            && status != null
-                            && "RUNNING".equalsIgnoreCase(status)) {
-
-                        stringRedisTemplate.opsForValue().set(
-                                jobKey,
-                                jobId,
-                                orphanJobTtl
-                        );
-
-                        log.warn(
-                                "Preserved orphan robot jobId for cleanup. deviceSn={}, jobId={}, status={}",
-                                deviceSn,
-                                jobId,
-                                status
-                        );
-
-                    } else {
-                        stringRedisTemplate.delete(jobKey);
-                    }
-
+                    stringRedisTemplate.delete(jobKey);
                     stringRedisTemplate.delete(localStatusKey);
                     stringRedisTemplate.delete(prodStatusKey);
                     stringRedisTemplate.delete(missionKey);
 
                     log.warn(
-                            "Ignoring robot working state. deviceSn={}, jobId={}, status={}, hasActiveSession={}, isDeviceOnline={}",
+                            "Ignoring robot active state because device is offline. deviceSn={}, jobId={}, status={}",
                             deviceSn,
                             jobId,
-                            status,
-                            hasActiveSession,
-                            isDeviceOnline
+                            status
                     );
 
                     return;
                 }
+
                 /*
-            * An active robot job can run much longer than 10 minutes, while the robot
-            * may publish RUNNING only when the state changes. Therefore these runtime
-            * keys must remain until an explicit terminal state or stream cleanup clears
-            * them.
-            */
-            if (jobId != null) {
-                stringRedisTemplate.opsForValue().set(jobKey, jobId);
+                 * create_job is published before the ACTIVE
+                 * LiveStreamSession is saved.
+                 *
+                 * Therefore RUNNING can legitimately arrive while
+                 * hasActiveSession == false.
+                 *
+                 * LiveStreamService stores the expected jobId in
+                 * Redis before publishing create_job, so a matching
+                 * jobId means this is the job ROBOPILOT is currently
+                 * starting.
+                 */
+                boolean trustedPendingJob =
+                        !hasActiveSession
+                                && matchesStoredJob;
+
+                /*
+                 * No ACTIVE DB session and the incoming robot job
+                 * doesn't match the pending ROBOPILOT job.
+                 *
+                 * Ignore it without deleting Redis because it may
+                 * simply be a delayed/orphan packet.
+                 */
+                if (!hasActiveSession
+                        && !trustedPendingJob) {
+
+                    log.warn(
+                            "Ignoring robot working state without matching active/pending session. deviceSn={}, incomingJobId={}, storedJobId={}, status={}",
+                            deviceSn,
+                            jobId,
+                            storedJobId,
+                            status
+                    );
+
+                    return;
+                }
+
+                /*
+                 * Keep runtime job state without expiry.
+                 *
+                 * Robot jobs may run for a long time and RUNNING
+                 * may only be published when the state changes.
+                 * Cleanup happens on terminal state, manual cleanup,
+                 * or device-offline recovery.
+                 */
+                if (jobId != null) {
+                    stringRedisTemplate
+                            .opsForValue()
+                            .set(
+                                    jobKey,
+                                    jobId
+                            );
+                }
+
+                if (status != null) {
+                    stringRedisTemplate
+                            .opsForValue()
+                            .set(
+                                    localStatusKey,
+                                    status
+                            );
+
+                    stringRedisTemplate
+                            .opsForValue()
+                            .set(
+                                    prodStatusKey,
+                                    status
+                            );
+                }
+
+                /*
+                 * Some RUNNING packets may not contain missionId.
+                 *
+                 * In that case do not delete/overwrite the mission
+                 * that LiveStreamService stored during STARTING.
+                 */
+                if (missionId != null) {
+                    stringRedisTemplate
+                            .opsForValue()
+                            .set(
+                                    missionKey,
+                                    missionId
+                            );
+                }
+
+                log.info(
+                        "Active robot job state stored. deviceSn={}, jobId={}, status={}, missionId={}, hasActiveSession={}, trustedPendingJob={}",
+                        deviceSn,
+                        jobId,
+                        status,
+                        missionId,
+                        hasActiveSession,
+                        trustedPendingJob
+                );
             }
 
-            if (status != null) {
-                stringRedisTemplate.opsForValue().set(localStatusKey, status);
-                stringRedisTemplate.opsForValue().set(prodStatusKey, status);
-            }
+            webSocketPublisher.publishStatus(
+                    deviceSn,
+                    jobState
+            );
 
-            if (missionId != null) {
-                stringRedisTemplate.opsForValue().set(missionKey, missionId);
-            }
+            webSocketPublisher.publishDashboardStatus(
+                    deviceSn,
+                    status,
+                    "robot-job-state"
+            );
 
             log.info(
-                    "Active robot job state stored without expiry. deviceSn={}, jobId={}, status={}, missionId={}",
+                    "Robot job state received. deviceSn={}, jobId={}, status={}, missionId={}, message={}",
                     deviceSn,
                     jobId,
                     status,
-                    missionId
+                    missionId,
+                    message
             );
-            }
-            webSocketPublisher.publishStatus(deviceSn, jobState);
-            webSocketPublisher.publishDashboardStatus(deviceSn, status, "robot-job-state");
-
-            log.info("Robot job state received. deviceSn={}, jobId={}, status={}, missionId={}, message={}",
-                    deviceSn, jobId, status, missionId, message);
 
         } catch (Exception e) {
-            log.error("Failed to handle robot job state. deviceSn={}, payload={}", deviceSn, payload, e);
+
+            log.error(
+                    "Failed to handle robot job state. deviceSn={}, payload={}",
+                    deviceSn,
+                    payload,
+                    e
+            );
         }
     }
 
-    private String textOrNull(JsonNode node, String fieldName) {
-        JsonNode value = node.path(fieldName);
-        if (value.isMissingNode() || value.isNull()) {
+    private String textOrNull(
+            JsonNode node,
+            String fieldName
+    ) {
+        JsonNode value =
+                node.path(fieldName);
+
+        if (value.isMissingNode()
+                || value.isNull()) {
             return null;
         }
-        String text = value.asText();
-        return text == null || text.isBlank() || "null".equalsIgnoreCase(text) ? null : text;
+
+        String text =
+                value.asText();
+
+        return text == null
+                || text.isBlank()
+                || "null".equalsIgnoreCase(text)
+                ? null
+                : text;
     }
 
-    private String firstText(JsonNode node, String... fieldNames) {
+    private String firstText(
+            JsonNode node,
+            String... fieldNames
+    ) {
         for (String fieldName : fieldNames) {
-            String value = textOrNull(node, fieldName);
+
+            String value =
+                    textOrNull(
+                            node,
+                            fieldName
+                    );
+
             if (value != null) {
                 return value;
             }
         }
+
         return null;
     }
 }

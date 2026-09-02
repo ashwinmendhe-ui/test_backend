@@ -22,7 +22,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @RequiredArgsConstructor
 public class DeviceOfflineMonitor {
-
     private final DeviceRepository deviceRepository;
     private final StringRedisTemplate redisTemplate;
     private final DeviceWebSocketPublisher webSocketPublisher;
