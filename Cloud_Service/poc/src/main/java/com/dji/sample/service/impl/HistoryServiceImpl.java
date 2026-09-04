@@ -1,27 +1,28 @@
 package com.dji.sample.service.impl;
 
+import com.dji.sample.dto.request.CreateHistoryRequest;
+import com.dji.sample.dto.response.BookmarkResponse;
 import com.dji.sample.dto.response.HistoryDetailResponse;
 import com.dji.sample.dto.response.HistoryListResponse;
 import com.dji.sample.entity.*;
 import com.dji.sample.repository.*;
 import com.dji.sample.service.HistoryService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
-import java.time.OffsetDateTime;
-import java.util.*;
-import com.dji.sample.util.DateTimeUtil;
-import com.dji.sample.dto.request.CreateHistoryRequest;
-import java.time.Duration;
-import com.dji.sample.dto.response.BookmarkResponse;
 import com.dji.sample.service.S3PresignService;
+import com.dji.sample.util.DateTimeUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -37,11 +38,13 @@ public class HistoryServiceImpl implements HistoryService {
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final S3PresignService s3PresignService;
     private final ObjectMapper objectMapper;
+
     private static final long BOOKMARK_FPS = 30L;
-    
-   @Override
+
+    @Override
     public List<HistoryListResponse> getList() {
-        return reportHistoryRepository.findAllByOrderByCreatedAtDesc()
+        return reportHistoryRepository
+                .findAllByOrderByCreatedAtDesc()
                 .stream()
                 .map(this::toListResponse)
                 .toList();
@@ -76,589 +79,1237 @@ public class HistoryServiceImpl implements HistoryService {
         return buildDetail(history);
     }
 
+    @Override
+        public HistoryDetailResponse updateWorkIssue(
+                UUID historyId,
+                String workIssue
+        ) {
+        ReportHistory history =
+                reportHistoryRepository
+                        .findById(historyId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "History not found"
+                                )
+                        );
 
-    private HistoryDetailResponse buildDetail(
-        ReportHistory history
-) {
-    Company company =
-            findCompany(history.getCompanyId());
+        String normalizedWorkIssue =
+                workIssue != null
+                        ? workIssue.trim()
+                        : null;
 
-    Site site =
-            findSite(history.getSiteId());
-
-    Mission mission =
-            findMission(history.getMissionId());
-
-    Device device =
-            findDevice(history.getDeviceSn());
-
-    User user =
-            findUser(history.getUserId());
-
-    String deviceName =
-            device != null &&
-            device.getDeviceName() != null
-                    ? device.getDeviceName()
-                    : history.getDeviceSn();
-
-    String userName =
-            resolveUserName(user);
-
-    /*
-     * History playbackUrl may be the backend HLS proxy URL.
-     * Resolve it to the original AI/storage playback URL before
-     * loading info.json / bookmark.ndjson.
-     */
-    String metadataUrl =
-            resolveMetadataUrl(
-                    history.getPlaybackUrl()
-            );
-
-    Map<String, Integer> labelCounts =
-            loadLabelCounts(metadataUrl);
-
-    List<BookmarkResponse> bookmarks =
-            loadBookmarks(
-                    metadataUrl,
-                    history.getStartTime()
-            );
-
-    int calculatedTotalRecognition =
-            !labelCounts.isEmpty()
-                    ? labelCounts.values()
-                            .stream()
-                            .mapToInt(Integer::intValue)
-                            .sum()
-                    : bookmarks.size();
-
-    /*
-     * Important:
-     * Detection processing may still be completing when
-     * the history row is first created.
-     *
-     * If the finalized bookmark data later contains a
-     * different total, keep report_history synchronized.
-     */
-    if (!Objects.equals(
-            history.getTotalRecognition(),
-            calculatedTotalRecognition
-    )) {
-        history.setTotalRecognition(
-                calculatedTotalRecognition
+        history.setWorkIssue(
+                normalizedWorkIssue == null ||
+                normalizedWorkIssue.isBlank()
+                        ? null
+                        : normalizedWorkIssue
         );
 
         reportHistoryRepository.save(history);
+
+        return buildDetail(history);
+        }
+    
+    private HistoryDetailResponse buildDetail(
+            ReportHistory history
+    ) {
+        Company company =
+                findCompany(history.getCompanyId());
+
+        Site site =
+                findSite(history.getSiteId());
+
+        Mission mission =
+                findMission(history.getMissionId());
+
+        Device device =
+                findDevice(history.getDeviceSn());
+
+        User user =
+                findUser(history.getUserId());
+
+        String deviceName =
+                device != null &&
+                device.getDeviceName() != null
+                        ? device.getDeviceName()
+                        : history.getDeviceSn();
+
+        String userName =
+                resolveUserName(user);
+
+        /*
+         * History playbackUrl may be the backend HLS proxy URL.
+         * Resolve it to the original AI/storage playback URL before
+         * loading info.json / bookmark.ndjson.
+         */
+        String metadataUrl =
+                resolveMetadataUrl(
+                        history.getPlaybackUrl()
+                );
+
+        Map<String, Integer> labelCounts =
+                loadLabelCounts(metadataUrl);
+
+        List<BookmarkResponse> bookmarks =
+                loadBookmarks(
+                        metadataUrl,
+                        history.getStartTime()
+                );
+
+        int calculatedTotalRecognition =
+                !labelCounts.isEmpty()
+                        ? labelCounts.values()
+                                .stream()
+                                .mapToInt(Integer::intValue)
+                                .sum()
+                        : bookmarks.size();
+
+        /*
+         * Detection types are derived from labels that actually
+         * occurred in bookmark/detection data.
+         */
+        List<String> calculatedDetectionTypes =
+                labelCounts.entrySet()
+                        .stream()
+                        .filter(entry ->
+                                entry.getValue() != null &&
+                                entry.getValue() > 0
+                        )
+                        .map(Map.Entry::getKey)
+                        .sorted()
+                        .toList();
+
+        /*
+         * Main detection type = label with highest detection count.
+         */
+        String calculatedMainDetectionType =
+                labelCounts.entrySet()
+                        .stream()
+                        .filter(entry ->
+                                entry.getValue() != null &&
+                                entry.getValue() > 0
+                        )
+                        .max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey)
+                        .orElse("");
+
+        /*
+         * Existing History rows were created before detectionTypes /
+         * mainDetectionType columns existed.
+         *
+         * Also, detection processing may still be completing when
+         * History is initially created.
+         *
+         * Backfill/synchronize the stored summary when finalized
+         * metadata becomes available.
+         */
+        boolean historyUpdated = false;
+
+        if (!Objects.equals(
+                history.getTotalRecognition(),
+                calculatedTotalRecognition
+        )) {
+            history.setTotalRecognition(
+                    calculatedTotalRecognition
+            );
+
+            historyUpdated = true;
+        }
+
+        if (
+                (history.getDetectionTypes() == null ||
+                 history.getDetectionTypes().isBlank()) &&
+                !calculatedDetectionTypes.isEmpty()
+        ) {
+            history.setDetectionTypes(
+                    String.join(
+                            ",",
+                            calculatedDetectionTypes
+                    )
+            );
+
+            historyUpdated = true;
+        }
+
+        if (
+                (history.getMainDetectionType() == null ||
+                 history.getMainDetectionType().isBlank()) &&
+                !calculatedMainDetectionType.isBlank()
+        ) {
+            history.setMainDetectionType(
+                    calculatedMainDetectionType
+            );
+
+            historyUpdated = true;
+        }
+
+        if (historyUpdated) {
+            reportHistoryRepository.save(history);
+        }
+
+        /*
+         * Prefer persisted values.
+         *
+         * For an old row being opened for the first time, the values
+         * above have now also been populated on the entity instance.
+         */
+        List<String> detectionTypes =
+                history.getDetectionTypes() != null &&
+                !history.getDetectionTypes().isBlank()
+                        ? parseDetectionTypes(
+                                history.getDetectionTypes()
+                        )
+                        : calculatedDetectionTypes;
+
+        String mainDetectionType =
+                history.getMainDetectionType() != null &&
+                !history.getMainDetectionType().isBlank()
+                        ? history.getMainDetectionType()
+                        : calculatedMainDetectionType;
+
+        return HistoryDetailResponse.builder()
+
+                .historyId(
+                        history.getHistoryId()
+                )
+
+                .companyId(
+                        history.getCompanyId()
+                )
+                .companyName(
+                        company != null &&
+                        company.getName() != null
+                                ? company.getName()
+                                : ""
+                )
+
+                .siteId(
+                        history.getSiteId()
+                )
+                .siteName(
+                        site != null &&
+                        site.getName() != null
+                                ? site.getName()
+                                : ""
+                )
+
+                .missionId(
+                        history.getMissionId()
+                )
+                .missionName(
+                        mission != null &&
+                        mission.getMissionName() != null
+                                ? mission.getMissionName()
+                                : ""
+                )
+
+                .deviceSn(
+                        history.getDeviceSn()
+                )
+                .deviceName(deviceName)
+                .robotName(deviceName)
+
+                .userId(
+                        history.getUserId()
+                )
+                .userName(userName)
+                .workerName(userName)
+
+                .sessionId(
+                        history.getSessionId()
+                )
+
+                .startTime(
+                        format(history.getStartTime())
+                )
+                .endTime(
+                        format(history.getEndTime())
+                )
+
+                .totalTime(
+                        history.getTotalTime()
+                )
+                .duration(
+                        history.getTotalTime()
+                )
+
+                .distance("")
+
+                .playbackUrl(
+                        history.getPlaybackUrl()
+                )
+
+                .reportCreatedAt(
+                        format(
+                                history.getEndTime() != null
+                                        ? history.getEndTime()
+                                        : history.getCreatedAt()
+                        )
+                )
+
+                .totalRecognition(
+                        calculatedTotalRecognition
+                )
+
+                .detectionTypes(
+                        detectionTypes
+                )
+
+                .mainDetectionType(
+                        mainDetectionType
+                )
+
+                .workIssue(
+                        history.getWorkIssue()
+                )
+
+                .labelCounts(
+                        labelCounts
+                )
+
+                .bookmarks(
+                        bookmarks
+                )
+
+                .build();
     }
 
-    return HistoryDetailResponse.builder()
-            .deviceSn(
-                    history.getDeviceSn()
-            )
+    private HistoryListResponse toListResponse(
+            ReportHistory history
+    ) {
+        Company company =
+                findCompany(history.getCompanyId());
 
-            .companyId(
-                    history.getCompanyId()
-            )
-            .companyName(
-                    company != null &&
-                    company.getName() != null
-                            ? company.getName()
-                            : ""
-            )
+        Site site =
+                findSite(history.getSiteId());
 
-            .siteId(
-                    history.getSiteId()
-            )
-            .siteName(
-                    site != null &&
-                    site.getName() != null
-                            ? site.getName()
-                            : ""
-            )
+        Mission mission =
+                findMission(history.getMissionId());
 
-            .missionId(
-                    history.getMissionId()
-            )
-            .missionName(
-                    mission != null &&
-                    mission.getMissionName() != null
-                            ? mission.getMissionName()
-                            : ""
-            )
+        Device device =
+                findDevice(history.getDeviceSn());
 
-            .deviceName(deviceName)
-            .robotName(deviceName)
-
-            .userName(userName)
-            .workerName(userName)
-
-            .startTime(
-                    format(history.getStartTime())
-            )
-            .endTime(
-                    format(history.getEndTime())
-            )
-
-            .totalTime(
-                    history.getTotalTime()
-            )
-            .duration(
-                    history.getTotalTime()
-            )
-
-            .distance("")
-
-            .playbackUrl(
-                    history.getPlaybackUrl()
-            )
-
-            .reportCreatedAt(
-                    format(
-                            history.getEndTime() != null
-                                    ? history.getEndTime()
-                                    : history.getCreatedAt()
-                    )
-            )
-
-            .totalRecognition(
-                    calculatedTotalRecognition
-            )
-
-            .labelCounts(
-                    labelCounts
-            )
-
-            .bookmarks(
-                    bookmarks
-            )
-
-            .build();
-}
-    
-    
-    
-    private HistoryListResponse toListResponse(ReportHistory history) {
-        Company company = findCompany(history.getCompanyId());
-        Site site = findSite(history.getSiteId());
-        Mission mission = findMission(history.getMissionId());
-        Device device = findDevice(history.getDeviceSn());
-        User user = findUser(history.getUserId());
+        User user =
+                findUser(history.getUserId());
 
         return HistoryListResponse.builder()
-                .historyId(history.getHistoryId())
-                .companyId(history.getCompanyId())
-                .companyName(company != null ? company.getName() : "")
-                .siteId(history.getSiteId())
-                .siteName(site != null ? site.getName() : "")
-                .missionId(history.getMissionId())
-                .missionName(mission != null ? mission.getMissionName() : "")
-                .deviceSn(history.getDeviceSn())
-                .deviceName(device != null ? device.getDeviceName() : history.getDeviceSn())
-                .playbackUrl(history.getPlaybackUrl())
-                .userName(resolveUserName(user))
-                .totalRecognition(history.getTotalRecognition())
-                .createdAt(format(history.getCreatedAt()))
-                .videoStatus(history.getVideoStatus())
+                .historyId(
+                        history.getHistoryId()
+                )
+
+                .companyId(
+                        history.getCompanyId()
+                )
+                .companyName(
+                        company != null
+                                ? company.getName()
+                                : ""
+                )
+
+                .siteId(
+                        history.getSiteId()
+                )
+                .siteName(
+                        site != null
+                                ? site.getName()
+                                : ""
+                )
+
+                .missionId(
+                        history.getMissionId()
+                )
+                .missionName(
+                        mission != null
+                                ? mission.getMissionName()
+                                : ""
+                )
+
+                .deviceSn(
+                        history.getDeviceSn()
+                )
+                .deviceName(
+                        device != null
+                                ? device.getDeviceName()
+                                : history.getDeviceSn()
+                )
+
+                .userId(
+                        history.getUserId()
+                )
+                .userName(
+                        resolveUserName(user)
+                )
+
+                .sessionId(
+                        history.getSessionId()
+                )
+
+                .startTime(
+                        format(history.getStartTime())
+                )
+                .endTime(
+                        format(history.getEndTime())
+                )
+                .totalTime(
+                        history.getTotalTime()
+                )
+
+                .playbackUrl(
+                        history.getPlaybackUrl()
+                )
+
+                .totalRecognition(
+                        history.getTotalRecognition()
+                )
+
+                .detectionTypes(
+                        parseDetectionTypes(
+                                history.getDetectionTypes()
+                        )
+                )
+
+                .mainDetectionType(
+                        history.getMainDetectionType()
+                )
+
+                .workIssue(
+                        history.getWorkIssue()
+                )
+
+                .createdAt(
+                        format(history.getCreatedAt())
+                )
+                .videoStatus(
+                        history.getVideoStatus()
+                )
+
                 .build();
     }
 
     private Company findCompany(UUID companyId) {
-        if (companyId == null) return null;
-        return companyRepository.findByCompanyIdAndDeletedAtIsNull(companyId).orElse(null);
+        if (companyId == null) {
+            return null;
+        }
+
+        return companyRepository
+                .findByCompanyIdAndDeletedAtIsNull(
+                        companyId
+                )
+                .orElse(null);
     }
 
     private Site findSite(UUID siteId) {
-        if (siteId == null) return null;
-        return siteRepository.findBySiteIdAndDeletedAtIsNull(siteId).orElse(null);
+        if (siteId == null) {
+            return null;
+        }
+
+        return siteRepository
+                .findBySiteIdAndDeletedAtIsNull(
+                        siteId
+                )
+                .orElse(null);
     }
 
     private Mission findMission(UUID missionId) {
-        if (missionId == null) return null;
-        return missionRepository.findByMissionIdAndDeletedAtIsNull(missionId).orElse(null);
+        if (missionId == null) {
+            return null;
+        }
+
+        return missionRepository
+                .findByMissionIdAndDeletedAtIsNull(
+                        missionId
+                )
+                .orElse(null);
     }
 
     private Device findDevice(String deviceSn) {
-        if (deviceSn == null || deviceSn.isBlank()) return null;
-        return deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn).orElse(null);
+        if (deviceSn == null || deviceSn.isBlank()) {
+            return null;
+        }
+
+        return deviceRepository
+                .findByDeviceSnAndDeletedAtIsNull(
+                        deviceSn
+                )
+                .orElse(null);
     }
 
     private User findUser(UUID userId) {
-        if (userId == null) return null;
-        return userRepository.findByUserIdAndDeletedAtIsNull(userId).orElse(null);
+        if (userId == null) {
+            return null;
+        }
+
+        return userRepository
+                .findByUserIdAndDeletedAtIsNull(
+                        userId
+                )
+                .orElse(null);
     }
 
     private String resolveUserName(User user) {
-        if (user == null) return "";
-        if (user.getFullName() != null && !user.getFullName().isBlank()) {
+        if (user == null) {
+            return "";
+        }
+
+        if (
+                user.getFullName() != null &&
+                !user.getFullName().isBlank()
+        ) {
             return user.getFullName();
         }
-        if (user.getUsername() != null && !user.getUsername().isBlank()) {
+
+        if (
+                user.getUsername() != null &&
+                !user.getUsername().isBlank()
+        ) {
             return user.getUsername();
         }
-        return user.getEmail() != null ? user.getEmail() : "";
+
+        return user.getEmail() != null
+                ? user.getEmail()
+                : "";
     }
 
-
-    private String calculateTotalTime(OffsetDateTime startTime, OffsetDateTime endTime) {
+    private String calculateTotalTime(
+            OffsetDateTime startTime,
+            OffsetDateTime endTime
+    ) {
         if (startTime == null || endTime == null) {
             return "00:00:00";
         }
 
-        Duration duration = Duration.between(startTime, endTime);
+        Duration duration =
+                Duration.between(
+                        startTime,
+                        endTime
+                );
 
-        long seconds = Math.max(duration.getSeconds(), 0);
-        long hours = seconds / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs = seconds % 60;
+        long seconds =
+                Math.max(
+                        duration.getSeconds(),
+                        0
+                );
 
-        return String.format("%02d:%02d:%02d", hours, minutes, secs);
+        long hours =
+                seconds / 3600;
+
+        long minutes =
+                (seconds % 3600) / 60;
+
+        long secs =
+                seconds % 60;
+
+        return String.format(
+                "%02d:%02d:%02d",
+                hours,
+                minutes,
+                secs
+        );
     }
 
     @Override
-    public HistoryDetailResponse createHistory(CreateHistoryRequest request) {
-
-        if (request.getDeviceSn() == null || request.getDeviceSn().isBlank()) {
-            throw new RuntimeException("deviceSn is required");
+    public HistoryDetailResponse createHistory(
+            CreateHistoryRequest request
+    ) {
+        if (
+                request.getDeviceSn() == null ||
+                request.getDeviceSn().isBlank()
+        ) {
+            throw new RuntimeException(
+                    "deviceSn is required"
+            );
         }
 
-        if (request.getPlaybackUrl() == null || request.getPlaybackUrl().isBlank()) {
-            throw new RuntimeException("playbackUrl is required");
+        if (
+                request.getPlaybackUrl() == null ||
+                request.getPlaybackUrl().isBlank()
+        ) {
+            throw new RuntimeException(
+                    "playbackUrl is required"
+            );
         }
 
-        Device device = findDevice(request.getDeviceSn());
+        Device device =
+                findDevice(
+                        request.getDeviceSn()
+                );
 
         LiveStreamSession session = null;
 
         if (request.getSessionId() != null) {
-            session = liveStreamSessionRepository
-                    .findById(request.getSessionId())
-                    .orElse(null);
+            session =
+                    liveStreamSessionRepository
+                            .findById(
+                                    request.getSessionId()
+                            )
+                            .orElse(null);
         }
 
-        if (session == null && request.getMissionId() != null) {
-            session = liveStreamSessionRepository
-                    .findFirstByDeviceSnAndMissionIdOrderByStartedAtDesc(
-                            request.getDeviceSn(),
-                            request.getMissionId()
-                    )
-                    .orElse(null);
+        if (
+                session == null &&
+                request.getMissionId() != null
+        ) {
+            session =
+                    liveStreamSessionRepository
+                            .findFirstByDeviceSnAndMissionIdOrderByStartedAtDesc(
+                                    request.getDeviceSn(),
+                                    request.getMissionId()
+                            )
+                            .orElse(null);
         }
 
         UUID companyId = null;
         UUID siteId = null;
 
         if (device != null) {
-            companyId = device.getCompany() != null ? device.getCompany().getCompanyId() : null;
-            siteId = device.getSite() != null ? device.getSite().getSiteId() : null;
+            companyId =
+                    device.getCompany() != null
+                            ? device
+                                    .getCompany()
+                                    .getCompanyId()
+                            : null;
+
+            siteId =
+                    device.getSite() != null
+                            ? device
+                                    .getSite()
+                                    .getSiteId()
+                            : null;
         }
 
-        OffsetDateTime startTime = session != null ? session.getStartedAt() : OffsetDateTime.now();
-        OffsetDateTime endTime = session != null && session.getStoppedAt() != null
-                ? session.getStoppedAt()
-                : OffsetDateTime.now();
+        OffsetDateTime startTime =
+                session != null
+                        ? session.getStartedAt()
+                        : OffsetDateTime.now();
 
-        Map<String, Integer> labelCounts = loadLabelCounts(resolveMetadataUrl(request.getPlaybackUrl()));
-        int totalRecognition = labelCounts.values().stream().mapToInt(Integer::intValue).sum();
+        OffsetDateTime endTime =
+                session != null &&
+                session.getStoppedAt() != null
+                        ? session.getStoppedAt()
+                        : OffsetDateTime.now();
 
-        ReportHistory history = ReportHistory.builder()
-                .historyId(UUID.randomUUID())
-                .deviceSn(request.getDeviceSn())
-                .playbackUrl(request.getPlaybackUrl())
-                .companyId(companyId)
-                .siteId(siteId)
-                .missionId(request.getMissionId())
-                .userId(session != null ? session.getUserId() : null)
-                .startTime(startTime)
-                .endTime(endTime)
-                .totalTime(calculateTotalTime(startTime, endTime))
-                .totalRecognition(totalRecognition)
-                .createdAt(OffsetDateTime.now())
-                .videoStatus("AVAILABLE")
-                .sessionId(request.getSessionId())
-                .build();
+        String metadataUrl =
+                resolveMetadataUrl(
+                        request.getPlaybackUrl()
+                );
 
-        ReportHistory saved = reportHistoryRepository.save(history);
+        Map<String, Integer> labelCounts =
+                loadLabelCounts(metadataUrl);
 
-        return getDetail(saved.getHistoryId());
+        int totalRecognition =
+                labelCounts.values()
+                        .stream()
+                        .mapToInt(Integer::intValue)
+                        .sum();
+
+        List<String> detectionTypes =
+                labelCounts.entrySet()
+                        .stream()
+                        .filter(entry ->
+                                entry.getValue() != null &&
+                                entry.getValue() > 0
+                        )
+                        .map(Map.Entry::getKey)
+                        .sorted()
+                        .toList();
+
+        String mainDetectionType =
+                labelCounts.entrySet()
+                        .stream()
+                        .filter(entry ->
+                                entry.getValue() != null &&
+                                entry.getValue() > 0
+                        )
+                        .max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey)
+                        .orElse("");
+
+        String detectionTypesText =
+                String.join(
+                        ",",
+                        detectionTypes
+                );
+
+        ReportHistory history =
+                ReportHistory.builder()
+                        .historyId(
+                                UUID.randomUUID()
+                        )
+                        .deviceSn(
+                                request.getDeviceSn()
+                        )
+                        .playbackUrl(
+                                request.getPlaybackUrl()
+                        )
+                        .companyId(
+                                companyId
+                        )
+                        .siteId(
+                                siteId
+                        )
+                        .missionId(
+                                request.getMissionId()
+                        )
+                        .userId(
+                                session != null
+                                        ? session.getUserId()
+                                        : null
+                        )
+                        .startTime(
+                                startTime
+                        )
+                        .endTime(
+                                endTime
+                        )
+                        .totalTime(
+                                calculateTotalTime(
+                                        startTime,
+                                        endTime
+                                )
+                        )
+                        .totalRecognition(
+                                totalRecognition
+                        )
+
+                        .detectionTypes(
+                                detectionTypesText
+                        )
+                        .mainDetectionType(
+                                mainDetectionType
+                        )
+                        .workIssue(null)
+
+                        .createdAt(
+                                OffsetDateTime.now()
+                        )
+                        .videoStatus(
+                                "AVAILABLE"
+                        )
+                        .sessionId(
+                                request.getSessionId()
+                        )
+                        .build();
+
+        ReportHistory saved =
+                reportHistoryRepository.save(
+                        history
+                );
+
+        return getDetail(
+                saved.getHistoryId()
+        );
     }
 
+    private String extractFolderPathFromUrl(
+            String playbackUrl
+    ) {
+        if (
+                playbackUrl == null ||
+                playbackUrl.isBlank()
+        ) {
+            return null;
+        }
 
-    private String extractFolderPathFromUrl(String playbackUrl) {
-        int idx = playbackUrl.indexOf("/streams/");
+        int idx =
+                playbackUrl.indexOf(
+                        "/streams/"
+                );
+
         if (idx < 0) {
             return null;
         }
 
-        String after = playbackUrl.substring(idx + "/streams/".length());
-        String[] parts = after.split("/");
+        String after =
+                playbackUrl.substring(
+                        idx +
+                        "/streams/".length()
+                );
+
+        String[] parts =
+                after.split("/");
 
         if (parts.length < 2) {
             return null;
         }
 
-        return "streams/" + parts[0] + "/" + parts[1];    }
+        return "streams/" +
+                parts[0] +
+                "/" +
+                parts[1];
+    }
 
-    private Map<String, Integer> loadLabels(String playbackUrl) {
+    private Map<String, Integer> loadLabels(
+            String playbackUrl
+    ) {
         try {
-            String folderPath = extractFolderPathFromUrl(playbackUrl);
-            if (folderPath == null) return Collections.emptyMap();
+            String folderPath =
+                    extractFolderPathFromUrl(
+                            playbackUrl
+                    );
 
-            String objectKey = folderPath + "/info.json";
-            
+            if (folderPath == null) {
+                return Collections.emptyMap();
+            }
 
-            try (InputStream is = s3PresignService.getStreamObject(objectKey)) {
-                JsonNode root = objectMapper.readTree(is);
-                JsonNode labelsNode = root.get("labels");
+            String objectKey =
+                    folderPath +
+                    "/info.json";
 
-                if (labelsNode == null || !labelsNode.isObject()) {
+            try (
+                    InputStream is =
+                            s3PresignService
+                                    .getStreamObject(
+                                            objectKey
+                                    )
+            ) {
+                JsonNode root =
+                        objectMapper.readTree(is);
+
+                JsonNode labelsNode =
+                        root.get("labels");
+
+                if (
+                        labelsNode == null ||
+                        !labelsNode.isObject()
+                ) {
                     return Collections.emptyMap();
                 }
 
-                Map<String, Integer> labels = new HashMap<>();
-                labelsNode.fields().forEachRemaining(entry ->
-                        labels.put(entry.getKey(), entry.getValue().asInt())
-                );
+                Map<String, Integer> labels =
+                        new HashMap<>();
+
+                labelsNode
+                        .fields()
+                        .forEachRemaining(
+                                entry ->
+                                        labels.put(
+                                                entry.getKey(),
+                                                entry.getValue()
+                                                        .asInt()
+                                        )
+                        );
 
                 return labels;
             }
         } catch (Exception e) {
+            log.warn(
+                    "[History] Failed to load info.json for playbackUrl={}",
+                    playbackUrl,
+                    e
+            );
 
-    return Collections.emptyMap();
-}
+            return Collections.emptyMap();
+        }
     }
 
-   private List<BookmarkRaw> loadBookmarkRaw(String playbackUrl) {
-    try {
-        String folderPath = extractFolderPathFromUrl(playbackUrl);
-
-        if (folderPath == null) {
+    private List<String> parseDetectionTypes(
+            String value
+    ) {
+        if (
+                value == null ||
+                value.isBlank()
+        ) {
             return Collections.emptyList();
         }
 
-        String objectKey = folderPath + "/bookmark.ndjson";
-        List<BookmarkRaw> result = new ArrayList<>();
+        return Arrays.stream(
+                        value.split(",")
+                )
+                .map(String::trim)
+                .filter(item ->
+                        !item.isBlank()
+                )
+                .distinct()
+                .toList();
+    }
 
-        try (
-                InputStream is = s3PresignService.getStreamObject(objectKey);
-                BufferedReader reader =
-                        new BufferedReader(new InputStreamReader(is))
+    private List<BookmarkRaw> loadBookmarkRaw(
+            String playbackUrl
+    ) {
+        try {
+            String folderPath =
+                    extractFolderPathFromUrl(
+                            playbackUrl
+                    );
+
+            if (folderPath == null) {
+                return Collections.emptyList();
+            }
+
+            String objectKey =
+                    folderPath +
+                    "/bookmark.ndjson";
+
+            List<BookmarkRaw> result =
+                    new ArrayList<>();
+
+            try (
+                    InputStream is =
+                            s3PresignService
+                                    .getStreamObject(
+                                            objectKey
+                                    );
+
+                    BufferedReader reader =
+                            new BufferedReader(
+                                    new InputStreamReader(
+                                            is
+                                    )
+                            )
+            ) {
+                String line;
+
+                while (
+                        (line = reader.readLine()) != null
+                ) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+
+                    JsonNode node =
+                            objectMapper.readTree(
+                                    line
+                            );
+
+                    BookmarkRaw raw =
+                            new BookmarkRaw();
+
+                    raw.labelIds =
+                            new ArrayList<>();
+
+                    JsonNode cAr =
+                            node.get("c_ar");
+
+                    if (
+                            cAr != null &&
+                            cAr.isArray()
+                    ) {
+                        for (JsonNode item : cAr) {
+                            raw.labelIds.add(
+                                    item.asInt()
+                            );
+                        }
+                    }
+
+                    raw.offset =
+                            node.has("o")
+                                    ? node.get("o")
+                                            .asLong()
+                                    : 0L;
+
+                    result.add(raw);
+                }
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            log.warn(
+                    "[History] Failed to load bookmark.ndjson for playbackUrl={}",
+                    playbackUrl,
+                    e
+            );
+
+            return Collections.emptyList();
+        }
+    }
+
+    private Map<String, Integer> loadLabelCounts(
+            String playbackUrl
+    ) {
+        Map<String, Integer> labels =
+                loadLabels(playbackUrl);
+
+        if (labels.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Integer, String> idToName =
+                new HashMap<>();
+
+        labels.forEach(
+                (name, id) ->
+                        idToName.put(
+                                id,
+                                name
+                        )
+        );
+
+        Map<String, Integer> counts =
+                new HashMap<>();
+
+        for (
+                BookmarkRaw bookmark :
+                loadBookmarkRaw(playbackUrl)
         ) {
-            String line;
+            for (
+                    Integer labelId :
+                    bookmark.labelIds
+            ) {
+                String labelName =
+                        idToName.get(
+                                labelId
+                        );
 
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) {
+                if (labelName != null) {
+                    counts.put(
+                            labelName,
+                            counts.getOrDefault(
+                                    labelName,
+                                    0
+                            ) + 1
+                    );
+                }
+            }
+        }
+
+        return counts;
+    }
+
+    private List<BookmarkResponse> loadBookmarks(
+            String playbackUrl,
+            OffsetDateTime startTime
+    ) {
+        Map<String, Integer> labels =
+                loadLabels(playbackUrl);
+
+        if (labels.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Integer, String> idToName =
+                new HashMap<>();
+
+        labels.forEach(
+                (name, id) ->
+                        idToName.put(
+                                id,
+                                name
+                        )
+        );
+
+        List<BookmarkRaw> rawBookmarks =
+                new ArrayList<>(
+                        loadBookmarkRaw(
+                                playbackUrl
+                        )
+                );
+
+        rawBookmarks.sort(
+                Comparator.comparingLong(
+                        bookmark ->
+                                bookmark.offset == null
+                                        ? 0L
+                                        : bookmark.offset
+                )
+        );
+
+        List<BookmarkResponse> responses =
+                new ArrayList<>();
+
+        for (
+                BookmarkRaw bookmark :
+                rawBookmarks
+        ) {
+            for (
+                    Integer labelId :
+                    bookmark.labelIds
+            ) {
+                String labelName =
+                        idToName.get(
+                                labelId
+                        );
+
+                if (labelName == null) {
                     continue;
                 }
 
-                JsonNode node = objectMapper.readTree(line);
+                String duration =
+                        formatBookmarkOffset(
+                                bookmark.offset
+                        );
 
-                BookmarkRaw raw = new BookmarkRaw();
-                raw.labelIds = new ArrayList<>();
+                String displayTime =
+                        formatBookmarkClockTime(
+                                startTime,
+                                bookmark.offset
+                        );
 
-                JsonNode cAr = node.get("c_ar");
-
-                if (cAr != null && cAr.isArray()) {
-                    for (JsonNode item : cAr) {
-                        raw.labelIds.add(item.asInt());
-                    }
-                }
-
-                raw.offset = node.has("o")
-                        ? node.get("o").asLong()
-                        : 0L;
-
-                result.add(raw);
-            }
-        }
-
-        return result;
-
-    } catch (Exception e) {
-        log.warn(
-                "[History] Failed to load bookmark.ndjson for playbackUrl={}",
-                playbackUrl,
-                e
-        );
-
-        return Collections.emptyList();
-    }
-}
-
-private Map<String, Integer> loadLabelCounts(String playbackUrl) {
-    Map<String, Integer> labels = loadLabels(playbackUrl);
-
-    if (labels.isEmpty()) {
-        return Collections.emptyMap();
-    }
-
-    Map<Integer, String> idToName = new HashMap<>();
-    labels.forEach((name, id) -> idToName.put(id, name));
-
-    Map<String, Integer> counts = new HashMap<>();
-
-    for (BookmarkRaw bookmark : loadBookmarkRaw(playbackUrl)) {
-        for (Integer labelId : bookmark.labelIds) {
-            String labelName = idToName.get(labelId);
-
-            if (labelName != null) {
-                counts.put(
-                        labelName,
-                        counts.getOrDefault(labelName, 0) + 1
+                responses.add(
+                        BookmarkResponse.builder()
+                                .label(
+                                        labelName
+                                )
+                                .mdisplay(
+                                        displayTime
+                                )
+                                .duration(
+                                        duration
+                                )
+                                .build()
                 );
             }
         }
+
+        return responses;
     }
 
-    return counts;
-}
+    private String resolveMetadataUrl(
+            String playbackUrl
+    ) {
+        if (
+                playbackUrl == null ||
+                playbackUrl.isBlank()
+        ) {
+            return playbackUrl;
+        }
 
-private List<BookmarkResponse> loadBookmarks(
-        String playbackUrl,
-        OffsetDateTime startTime
-) {
-    Map<String, Integer> labels = loadLabels(playbackUrl);
+        if (
+                playbackUrl.contains(
+                        "/streams/"
+                )
+        ) {
+            return playbackUrl;
+        }
 
-    if (labels.isEmpty()) {
-        return Collections.emptyList();
-    }
+        String marker =
+                "/live/hls/";
 
-    Map<Integer, String> idToName = new HashMap<>();
-    labels.forEach((name, id) -> idToName.put(id, name));
+        int idx =
+                playbackUrl.indexOf(
+                        marker
+                );
 
-    List<BookmarkRaw> rawBookmarks =
-            new ArrayList<>(loadBookmarkRaw(playbackUrl));
+        if (idx < 0) {
+            return playbackUrl;
+        }
 
-    rawBookmarks.sort(
-            Comparator.comparingLong(
-                    bookmark -> bookmark.offset == null
-                            ? 0L
-                            : bookmark.offset
-            )
-    );
+        String after =
+                playbackUrl.substring(
+                        idx +
+                        marker.length()
+                );
 
-    List<BookmarkResponse> responses = new ArrayList<>();
+        String sessionIdText =
+                after.split("/")[0];
 
-    for (BookmarkRaw bookmark : rawBookmarks) {
-        for (Integer labelId : bookmark.labelIds) {
-            String labelName = idToName.get(labelId);
-
-            if (labelName == null) {
-                continue;
-            }
-
-            String duration =
-                    formatBookmarkOffset(bookmark.offset);
-
-            String displayTime =
-                    formatBookmarkClockTime(
-                            startTime,
-                            bookmark.offset
+        try {
+            UUID sessionId =
+                    UUID.fromString(
+                            sessionIdText
                     );
 
-            responses.add(
-                    BookmarkResponse.builder()
-                            .label(labelName)
-                            .mdisplay(displayTime)
-                            .duration(duration)
-                            .build()
+            return liveStreamSessionRepository
+                    .findById(sessionId)
+                    .map(
+                            LiveStreamSession::getPlaybackUrl
+                    )
+                    .filter(url ->
+                            url != null &&
+                            !url.isBlank()
+                    )
+                    .orElse(
+                            playbackUrl
+                    );
+
+        } catch (Exception e) {
+            log.warn(
+                    "[History] Failed to resolve metadata url from playbackUrl={}",
+                    playbackUrl,
+                    e
             );
+
+            return playbackUrl;
         }
     }
 
-    return responses;
-}
+    private String formatBookmarkOffset(
+            Long frameOffset
+    ) {
+        if (
+                frameOffset == null ||
+                frameOffset < 0
+        ) {
+            return "00:00:00";
+        }
 
-private String resolveMetadataUrl(String playbackUrl) {
-    if (playbackUrl == null || playbackUrl.isBlank()) {
-        return playbackUrl;
-    }
+        long totalSeconds =
+                frameOffset /
+                BOOKMARK_FPS;
 
-    if (playbackUrl.contains("/streams/")) {
-        return playbackUrl;
-    }
+        long hours =
+                totalSeconds / 3600;
 
-    String marker = "/live/hls/";
-    int idx = playbackUrl.indexOf(marker);
+        long minutes =
+                (totalSeconds % 3600) / 60;
 
-    if (idx < 0) {
-        return playbackUrl;
-    }
+        long seconds =
+                totalSeconds % 60;
 
-    String after = playbackUrl.substring(idx + marker.length());
-    String sessionIdText = after.split("/")[0];
-
-    try {
-        UUID sessionId = UUID.fromString(sessionIdText);
-
-        return liveStreamSessionRepository.findById(sessionId)
-                .map(LiveStreamSession::getPlaybackUrl)
-                .filter(url -> url != null && !url.isBlank())
-                .orElse(playbackUrl);
-
-    } catch (Exception e) {
-        log.warn(
-                "[History] Failed to resolve metadata url from playbackUrl={}",
-                playbackUrl,
-                e
+        return String.format(
+                "%02d:%02d:%02d",
+                hours,
+                minutes,
+                seconds
         );
-
-        return playbackUrl;
-    }
-}
-
-private String formatBookmarkOffset(Long frameOffset) {
-    if (frameOffset == null || frameOffset < 0) {
-        return "00:00:00";
     }
 
-    long totalSeconds = frameOffset / BOOKMARK_FPS;
-
-    long hours = totalSeconds / 3600;
-    long minutes = (totalSeconds % 3600) / 60;
-    long seconds = totalSeconds % 60;
-
-    return String.format(
-            "%02d:%02d:%02d",
-            hours,
-            minutes,
-            seconds
-    );
-}
-
-private String formatBookmarkClockTime(
-        OffsetDateTime startTime,
-        Long frameOffset
-) {
-    if (startTime == null) {
-        return formatBookmarkOffset(frameOffset);
-    }
-
-    long safeFrameOffset =
-            frameOffset == null || frameOffset < 0
-                    ? 0L
-                    : frameOffset;
-
-    long offsetMillis = Math.round(
-            safeFrameOffset * 1000.0 / BOOKMARK_FPS
-    );
-
-    return startTime
-            .plusNanos(offsetMillis * 1_000_000L)
-            .atZoneSameInstant(
-                    java.time.ZoneId.of("Asia/Seoul")
-            )
-            .format(
-                    java.time.format.DateTimeFormatter
-                            .ofPattern("HH:mm:ss")
+    private String formatBookmarkClockTime(
+            OffsetDateTime startTime,
+            Long frameOffset
+    ) {
+        if (startTime == null) {
+            return formatBookmarkOffset(
+                    frameOffset
             );
-}
+        }
 
-private static class BookmarkRaw {
-    List<Integer> labelIds;
-    Long offset;
-}
+        long safeFrameOffset =
+                frameOffset == null ||
+                frameOffset < 0
+                        ? 0L
+                        : frameOffset;
 
-    private String format(OffsetDateTime value) {
-        String formatted = DateTimeUtil.formatKst(value);
-        return formatted != null ? formatted : "";
+        long offsetMillis =
+                Math.round(
+                        safeFrameOffset *
+                        1000.0 /
+                        BOOKMARK_FPS
+                );
+
+        return startTime
+                .plusNanos(
+                        offsetMillis *
+                        1_000_000L
+                )
+                .atZoneSameInstant(
+                        java.time.ZoneId.of(
+                                "Asia/Seoul"
+                        )
+                )
+                .format(
+                        java.time.format.DateTimeFormatter
+                                .ofPattern(
+                                        "HH:mm:ss"
+                                )
+                );
+    }
+
+    private static class BookmarkRaw {
+        List<Integer> labelIds;
+        Long offset;
+    }
+
+    private String format(
+            OffsetDateTime value
+    ) {
+        String formatted =
+                DateTimeUtil.formatKst(
+                        value
+                );
+
+        return formatted != null
+                ? formatted
+                : "";
     }
 }

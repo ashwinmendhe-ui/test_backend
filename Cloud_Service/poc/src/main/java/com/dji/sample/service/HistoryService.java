@@ -12,4 +12,8 @@ public interface HistoryService {
     HistoryDetailResponse getDetail(UUID historyId);
     HistoryDetailResponse createHistory(CreateHistoryRequest request);
     HistoryDetailResponse getDetailBySessionId(UUID sessionId);
+    HistoryDetailResponse updateWorkIssue(
+        UUID historyId,
+        String workIssue
+);
 }

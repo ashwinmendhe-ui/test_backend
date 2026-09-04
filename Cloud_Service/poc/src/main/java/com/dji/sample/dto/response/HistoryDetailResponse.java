@@ -38,4 +38,12 @@ public class HistoryDetailResponse {
     private Map<String, Integer> labelCounts;
     private List<BookmarkResponse> bookmarks;
     private String companyName;
+    private UUID historyId;
+    private UUID userId;
+    private UUID sessionId;
+
+    private List<String> detectionTypes;
+    private String mainDetectionType;
+
+    private String workIssue;
 }

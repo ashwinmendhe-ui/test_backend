@@ -65,6 +65,15 @@ public class ReportHistory {
     @Column(name = "session_id")
     private UUID sessionId;
 
+    @Column(name = "work_issue", columnDefinition = "TEXT")
+    private String workIssue;
+
+    @Column(name = "detection_types", columnDefinition = "TEXT")
+    private String detectionTypes;
+
+    @Column(name = "main_detection_type")
+    private String mainDetectionType;
+
     @PrePersist
     public void prePersist() {
         if (historyId == null) {

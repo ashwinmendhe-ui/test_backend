@@ -6,7 +6,7 @@ import com.dji.sample.dto.response.HistoryListResponse;
 import com.dji.sample.service.HistoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
+import com.dji.sample.dto.request.UpdateWorkIssueRequest;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +34,17 @@ public class HistoryController {
     @GetMapping("/{id}")
     public HistoryDetailResponse getDetail(@PathVariable UUID id) {
         return historyService.getDetail(id);
+    }
+
+    @PatchMapping("/{id}/work-issue")
+    public HistoryDetailResponse updateWorkIssue(
+            @PathVariable UUID id,
+            @RequestBody UpdateWorkIssueRequest request
+    ) {
+        return historyService.updateWorkIssue(
+                id,
+                request.getWorkIssue()
+        );
     }
 
     
