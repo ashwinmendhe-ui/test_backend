@@ -1,5 +1,7 @@
 package com.dji.sample.config;
 
+import com.dji.sample.security.CustomAccessDeniedHandler;
+import com.dji.sample.security.JwtAuthenticationEntryPoint;
 import com.dji.sample.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -15,13 +17,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
-import com.dji.sample.security.JwtAuthenticationEntryPoint;
-import com.dji.sample.security.CustomAccessDeniedHandler;
 
 @Configuration
 @EnableWebSecurity
 @EnableAspectJAutoProxy
-@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true)
+@EnableMethodSecurity(
+        prePostEnabled = true,
+        securedEnabled = true
+)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -36,16 +39,38 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(
+            HttpSecurity http
+    ) throws Exception {
 
         return http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                .cors(cors ->
+                        cors.configurationSource(
+                                corsConfigurationSource
+                        )
                 )
+
+                .csrf(csrf ->
+                        csrf.disable()
+                )
+
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        /*
+                         * Browser CORS preflight.
+                         */
+                        .requestMatchers(
+                                HttpMethod.OPTIONS,
+                                "/**"
+                        )
+                        .permitAll()
+
                         .requestMatchers(
                                 "/api/health",
                                 "/api/v1/auth/login",
@@ -58,15 +83,33 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/actuator/health",
                                 "/api/v1/live/hls/**"
-                        ).permitAll()
-                        .requestMatchers("/api/v1/device/auth/**").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .exceptionHandling(exceptionHandling -> exceptionHandling
-                                .authenticationEntryPoint(jwtAuthenticationEntryPoint)
-                                .accessDeniedHandler(customAccessDeniedHandler)
                         )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                        .permitAll()
+
+                        .requestMatchers(
+                                "/api/v1/device/auth/**"
+                        )
+                        .permitAll()
+
+                        .anyRequest()
+                        .authenticated()
+                )
+
+                .exceptionHandling(exceptionHandling ->
+                        exceptionHandling
+                                .authenticationEntryPoint(
+                                        jwtAuthenticationEntryPoint
+                                )
+                                .accessDeniedHandler(
+                                        customAccessDeniedHandler
+                                )
+                )
+
+                .addFilterBefore(
+                        jwtAuthenticationFilter,
+                        UsernamePasswordAuthenticationFilter.class
+                )
+
                 .build();
     }
 }
