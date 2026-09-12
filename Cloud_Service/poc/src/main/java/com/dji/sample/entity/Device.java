@@ -21,7 +21,7 @@ public class Device {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(name = "device_id", nullable = false, unique = true, updatable = false)
+    @Column(name = "device_id", nullable = false, unique = true)
     private UUID deviceId;
 
     @Column(name = "device_name", nullable = false)
