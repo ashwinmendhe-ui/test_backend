@@ -203,6 +203,18 @@ public class DeviceServiceImpl implements DeviceService {
                     throw new RuntimeException("Serial number already exists");
                 });
 
+        UUID newDeviceId = request.getDeviceId();
+
+        // Blank/null during update => retain existing identifier
+        if (newDeviceId != null && !newDeviceId.equals(deviceId)) {
+            deviceRepository.findByDeviceIdAndDeletedAtIsNull(newDeviceId)
+                    .ifPresent(existing -> {
+                        throw new RuntimeException("Robot Identifier already exists");
+                    });
+
+            device.setDeviceId(newDeviceId);
+        }
+
         String deviceType = normalizeDeviceType(request.getDeviceType());
 
         device.setDeviceName(request.getDeviceName());
