@@ -148,12 +148,17 @@ public class HistoryServiceImpl implements HistoryService {
                 );
 
         Map<String, Integer> labelCounts =
-                loadLabelCounts(metadataUrl);
+                loadLabelCounts(
+                        metadataUrl,
+                        history.getStartTime(),
+                        history.getEndTime()
+                );
 
         List<BookmarkResponse> bookmarks =
                 loadBookmarks(
                         metadataUrl,
-                        history.getStartTime()
+                        history.getStartTime(),
+                        history.getEndTime()
                 );
 
         int calculatedTotalRecognition =
@@ -694,7 +699,11 @@ public class HistoryServiceImpl implements HistoryService {
                 );
 
         Map<String, Integer> labelCounts =
-                loadLabelCounts(metadataUrl);
+                loadLabelCounts(
+                        metadataUrl,
+                        startTime,
+                        endTime
+                );
 
         int totalRecognition =
                 labelCounts.values()
@@ -1014,8 +1023,43 @@ public class HistoryServiceImpl implements HistoryService {
         }
     }
 
+    private boolean isBookmarkWithinSession(
+            Long frameOffset,
+            OffsetDateTime startTime,
+            OffsetDateTime endTime
+    ) {
+        if (frameOffset == null || frameOffset < 0) {
+            return false;
+        }
+
+        if (startTime == null || endTime == null) {
+            return true;
+        }
+
+        long sessionDurationMillis =
+                Math.max(
+                        Duration.between(
+                                startTime,
+                                endTime
+                        ).toMillis(),
+                        0L
+                );
+
+        long bookmarkOffsetMillis =
+                Math.round(
+                        frameOffset *
+                        1000.0 /
+                        BOOKMARK_FPS
+                );
+
+        return bookmarkOffsetMillis <=
+                sessionDurationMillis;
+    }
+
     private Map<String, Integer> loadLabelCounts(
-            String playbackUrl
+            String playbackUrl,
+            OffsetDateTime startTime,
+            OffsetDateTime endTime
     ) {
         Map<String, Integer> labels =
                 loadLabels(playbackUrl);
@@ -1042,6 +1086,23 @@ public class HistoryServiceImpl implements HistoryService {
                 BookmarkRaw bookmark :
                 loadBookmarkRaw(playbackUrl)
         ) {
+            if (
+                    !isBookmarkWithinSession(
+                            bookmark.offset,
+                            startTime,
+                            endTime
+                    )
+            ) {
+                log.debug(
+                        "[History] Ignoring bookmark outside session interval. offset={}, startTime={}, endTime={}",
+                        bookmark.offset,
+                        startTime,
+                        endTime
+                );
+
+                continue;
+            }
+
             for (
                     Integer labelId :
                     bookmark.labelIds
@@ -1068,7 +1129,8 @@ public class HistoryServiceImpl implements HistoryService {
 
     private List<BookmarkResponse> loadBookmarks(
             String playbackUrl,
-            OffsetDateTime startTime
+            OffsetDateTime startTime,
+            OffsetDateTime endTime
     ) {
         Map<String, Integer> labels =
                 loadLabels(playbackUrl);
@@ -1111,6 +1173,23 @@ public class HistoryServiceImpl implements HistoryService {
                 BookmarkRaw bookmark :
                 rawBookmarks
         ) {
+            if (
+                    !isBookmarkWithinSession(
+                            bookmark.offset,
+                            startTime,
+                            endTime
+                    )
+            ) {
+                log.debug(
+                        "[History] Ignoring bookmark outside session interval. offset={}, startTime={}, endTime={}",
+                        bookmark.offset,
+                        startTime,
+                        endTime
+                );
+
+                continue;
+            }
+
             for (
                     Integer labelId :
                     bookmark.labelIds
