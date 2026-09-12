@@ -185,50 +185,54 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public DeviceResponse updateDevice(UUID deviceId, DeviceRequest request) {
-        Device device = deviceRepository.findByDeviceIdAndDeletedAtIsNull(deviceId)
-                .orElseThrow(() -> new RuntimeException("Device not found"));
+public DeviceResponse updateDevice(UUID deviceId, DeviceRequest request) {
+    Device device = deviceRepository.findByDeviceIdAndDeletedAtIsNull(deviceId)
+            .orElseThrow(() -> new RuntimeException("Device not found"));
 
-        String deviceSn = request.getDeviceSn() != null
-                ? request.getDeviceSn().trim()
-                : "";
+    String deviceSn = request.getDeviceSn() != null
+            ? request.getDeviceSn().trim()
+            : "";
 
-        if (deviceSn.isBlank()) {
-            throw new RuntimeException("Serial number is required");
-        }
+    if (deviceSn.isBlank()) {
+        throw new RuntimeException("Serial number is required");
+    }
 
-        deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn)
-                .filter(existing -> !existing.getDeviceId().equals(deviceId))
+    deviceRepository.findByDeviceSnAndDeletedAtIsNull(deviceSn)
+            .filter(existing -> !existing.getDeviceId().equals(deviceId))
+            .ifPresent(existing -> {
+                throw new RuntimeException("Serial number already exists");
+            });
+
+    // Update Robot Identifier only when a value is provided.
+    // If null/blank is sent, keep the existing identifier.
+    UUID newDeviceId = request.getDeviceId();
+
+    if (newDeviceId != null && !newDeviceId.equals(device.getDeviceId())) {
+
+        // Reject duplicate Robot Identifier
+        deviceRepository.findByDeviceIdAndDeletedAtIsNull(newDeviceId)
                 .ifPresent(existing -> {
-                    throw new RuntimeException("Serial number already exists");
+                    throw new RuntimeException("Robot Identifier already exists");
                 });
 
-        UUID newDeviceId = request.getDeviceId();
-
-        // Blank/null during update => retain existing identifier
-        if (newDeviceId != null && !newDeviceId.equals(deviceId)) {
-            deviceRepository.findByDeviceIdAndDeletedAtIsNull(newDeviceId)
-                    .ifPresent(existing -> {
-                        throw new RuntimeException("Robot Identifier already exists");
-                    });
-
-            device.setDeviceId(newDeviceId);
-        }
-
-        String deviceType = normalizeDeviceType(request.getDeviceType());
-
-        device.setDeviceName(request.getDeviceName());
-        device.setDeviceType(deviceType);
-        device.setBrandName(request.getBrandName());
-        device.setModel(request.getModel());
-        device.setDeviceSn(deviceSn);
-        device.setDescription(request.getDescription());
-        device.setCompany(getCompany(request.getCompanyId()));
-        device.setSite(getSite(request.getSiteId()));
-        device.setType(deviceType);
-
-        return toResponse(deviceRepository.save(device));
+        device.setDeviceId(newDeviceId);
     }
+
+    String deviceType = normalizeDeviceType(request.getDeviceType());
+
+    device.setDeviceName(request.getDeviceName());
+    device.setDeviceType(deviceType);
+    device.setBrandName(request.getBrandName());
+    device.setModel(request.getModel());
+    device.setDeviceSn(deviceSn);
+    device.setDescription(request.getDescription());
+    device.setCompany(getCompany(request.getCompanyId()));
+    device.setSite(getSite(request.getSiteId()));
+    device.setType(deviceType);
+
+    return toResponse(deviceRepository.save(device));
+}
+    
     @Override
     public void deleteDevice(UUID deviceId) {
         Device device = deviceRepository.findByDeviceIdAndDeletedAtIsNull(deviceId)
