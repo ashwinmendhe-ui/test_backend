@@ -17,10 +17,8 @@ import com.dji.sample.repository.UserRepository;
 import com.dji.sample.repository.UserRoleRepository;
 import com.dji.sample.security.CustomUserDetails;
 import com.dji.sample.util.DateTimeUtil;
-
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
@@ -34,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -48,7 +47,6 @@ public class PlaybackService {
     private final LiveStreamSessionRepository liveStreamSessionRepository;
     private final DeviceRepository deviceRepository;
     private final MissionRepository missionRepository;
-
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
 
@@ -60,7 +58,6 @@ public class PlaybackService {
     ) {
         User currentUser = getCurrentUser();
 
-        validateCompanyAccess(currentUser, companyId);
         validateSiteAccess(currentUser, siteId);
         validateDeviceAccess(currentUser, deviceSn);
         validateMissionAccess(currentUser, missionId);
@@ -75,11 +72,16 @@ public class PlaybackService {
             predicates.add(cb.isNotNull(root.get("playbackUrl")));
             predicates.add(cb.notEqual(root.get("playbackUrl"), ""));
 
-            /*
-             * SYS_ADMIN can query everything.
-             * All other roles remain restricted to their company.
-             */
-            if (!isSysAdmin(currentUser)) {
+            if (isSysAdmin(currentUser)) {
+                if (hasText(companyId)) {
+                    predicates.add(
+                            cb.equal(
+                                    root.get("companyId"),
+                                    UUID.fromString(companyId)
+                            )
+                    );
+                }
+            } else if (!isCompanyUser(currentUser)) {
                 UUID currentCompanyId = currentUser.getCompanyId();
 
                 if (currentCompanyId == null) {
@@ -94,40 +96,19 @@ public class PlaybackService {
                 );
             }
 
-            /*
-             * Company User must only receive assigned resources.
-             */
             if (isCompanyUser(currentUser)) {
-
-                if (allowedDeviceSns.isEmpty() ||
-                        allowedMissionIds.isEmpty() ||
-                        allowedSiteIds.isEmpty()) {
+                if (allowedDeviceSns.isEmpty()
+                        || allowedMissionIds.isEmpty()
+                        || allowedSiteIds.isEmpty()) {
                     return cb.disjunction();
                 }
 
-                predicates.add(
-                        root.get("deviceSn").in(allowedDeviceSns)
-                );
-
-                predicates.add(
-                        root.get("missionId").in(allowedMissionIds)
-                );
-
-                predicates.add(
-                        root.get("siteId").in(allowedSiteIds)
-                );
+                predicates.add(root.get("deviceSn").in(allowedDeviceSns));
+                predicates.add(root.get("missionId").in(allowedMissionIds));
+                predicates.add(root.get("siteId").in(allowedSiteIds));
             }
 
-            if (companyId != null && !companyId.isBlank()) {
-                predicates.add(
-                        cb.equal(
-                                root.get("companyId"),
-                                UUID.fromString(companyId)
-                        )
-                );
-            }
-
-            if (siteId != null && !siteId.isBlank()) {
+            if (hasText(siteId)) {
                 predicates.add(
                         cb.equal(
                                 root.get("siteId"),
@@ -136,7 +117,7 @@ public class PlaybackService {
                 );
             }
 
-            if (deviceSn != null && !deviceSn.isBlank()) {
+            if (hasText(deviceSn)) {
                 predicates.add(
                         cb.equal(
                                 root.get("deviceSn"),
@@ -145,7 +126,7 @@ public class PlaybackService {
                 );
             }
 
-            if (missionId != null && !missionId.isBlank()) {
+            if (hasText(missionId)) {
                 predicates.add(
                         cb.equal(
                                 root.get("missionId"),
@@ -154,18 +135,13 @@ public class PlaybackService {
                 );
             }
 
-            return cb.and(
-                    predicates.toArray(new Predicate[0])
-            );
+            return cb.and(predicates.toArray(new Predicate[0]));
         };
 
         return reportHistoryRepository
                 .findAll(
                         spec,
-                        Sort.by(
-                                Sort.Direction.DESC,
-                                "createdAt"
-                        )
+                        Sort.by(Sort.Direction.DESC, "createdAt")
                 )
                 .stream()
                 .map(this::toResponse)
@@ -173,25 +149,15 @@ public class PlaybackService {
     }
 
     public List<PlaybackTelemetryResponse> getTelemetry(UUID sessionId) {
-
         User currentUser = getCurrentUser();
 
         LiveStreamSession session = liveStreamSessionRepository
                 .findById(sessionId)
                 .orElseThrow(
-                        () -> new RuntimeException(
-                                "Stream session not found"
-                        )
+                        () -> new RuntimeException("Stream session not found")
                 );
 
-        /*
-         * Prevent direct sessionId access to telemetry belonging
-         * to unassigned resources.
-         */
-        validateDeviceAccess(
-                currentUser,
-                session.getDeviceSn()
-        );
+        validateDeviceAccess(currentUser, session.getDeviceSn());
 
         if (session.getMissionId() != null) {
             validateMissionAccess(
@@ -207,17 +173,15 @@ public class PlaybackService {
                 .stream()
                 .map(item ->
                         PlaybackTelemetryResponse.builder()
-                                .recordedAt(
-                                        item.getRecordedAt()
-                                )
+                                .recordedAt(item.getRecordedAt())
                                 .offsetMs(
                                         startedAt != null
                                                 ? java.time.Duration
-                                                    .between(
-                                                            startedAt,
-                                                            item.getRecordedAt()
-                                                    )
-                                                    .toMillis()
+                                                .between(
+                                                        startedAt,
+                                                        item.getRecordedAt()
+                                                )
+                                                .toMillis()
                                                 : 0L
                                 )
                                 .status(item.getStatus())
@@ -237,180 +201,105 @@ public class PlaybackService {
             String companyId,
             String siteId
     ) {
-
         User currentUser = getCurrentUser();
 
-        validateCompanyAccess(currentUser, companyId);
         validateSiteAccess(currentUser, siteId);
 
-        Set<String> allowedDeviceSns =
-                getAllowedDeviceSns(currentUser);
+        Set<String> allowedDeviceSns = getAllowedDeviceSns(currentUser);
+        Set<UUID> allowedMissionIds = getAllowedMissionIds(currentUser);
+        Set<UUID> allowedSiteIds = getAllowedSiteIds(currentUser);
 
-        Set<UUID> allowedMissionIds =
-                getAllowedMissionIds(currentUser);
+        Specification<ReportHistory> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
 
-        Set<UUID> allowedSiteIds =
-                getAllowedSiteIds(currentUser);
+            predicates.add(cb.isNotNull(root.get("playbackUrl")));
+            predicates.add(cb.notEqual(root.get("playbackUrl"), ""));
 
-        Specification<ReportHistory> spec =
-                (root, query, cb) -> {
-
-                    List<Predicate> predicates =
-                            new ArrayList<>();
-
+            if (isSysAdmin(currentUser)) {
+                if (hasText(companyId)) {
                     predicates.add(
-                            cb.isNotNull(
-                                    root.get("playbackUrl")
+                            cb.equal(
+                                    root.get("companyId"),
+                                    UUID.fromString(companyId)
                             )
                     );
+                }
+            } else if (!isCompanyUser(currentUser)) {
+                UUID currentCompanyId = currentUser.getCompanyId();
 
-                    predicates.add(
-                            cb.notEqual(
-                                    root.get("playbackUrl"),
-                                    ""
-                            )
-                    );
+                if (currentCompanyId == null) {
+                    return cb.disjunction();
+                }
 
-                    /*
-                     * Company Admin / Company User cannot query
-                     * another company's playback history.
-                     */
-                    if (!isSysAdmin(currentUser)) {
+                predicates.add(
+                        cb.equal(
+                                root.get("companyId"),
+                                currentCompanyId
+                        )
+                );
+            }
 
-                        UUID currentCompanyId =
-                                currentUser.getCompanyId();
+            if (isCompanyUser(currentUser)) {
+                if (allowedDeviceSns.isEmpty()
+                        || allowedMissionIds.isEmpty()
+                        || allowedSiteIds.isEmpty()) {
+                    return cb.disjunction();
+                }
 
-                        if (currentCompanyId == null) {
-                            return cb.disjunction();
-                        }
+                predicates.add(root.get("deviceSn").in(allowedDeviceSns));
+                predicates.add(root.get("missionId").in(allowedMissionIds));
+                predicates.add(root.get("siteId").in(allowedSiteIds));
+            }
 
-                        predicates.add(
-                                cb.equal(
-                                        root.get("companyId"),
-                                        currentCompanyId
-                                )
-                        );
-                    }
+            if (hasText(siteId)) {
+                predicates.add(
+                        cb.equal(
+                                root.get("siteId"),
+                                UUID.fromString(siteId)
+                        )
+                );
+            }
 
-                    /*
-                     * Company User options must be the
-                     * intersection of playback history and
-                     * assigned resources.
-                     */
-                    if (isCompanyUser(currentUser)) {
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
 
-                        if (allowedDeviceSns.isEmpty() ||
-                                allowedMissionIds.isEmpty() ||
-                                allowedSiteIds.isEmpty()) {
-                            return cb.disjunction();
-                        }
+        Map<String, PlaybackOptionResponse> options = new LinkedHashMap<>();
 
-                        predicates.add(
-                                root.get("deviceSn")
-                                        .in(allowedDeviceSns)
-                        );
-
-                        predicates.add(
-                                root.get("missionId")
-                                        .in(allowedMissionIds)
-                        );
-
-                        predicates.add(
-                                root.get("siteId")
-                                        .in(allowedSiteIds)
-                        );
-                    }
-
-                    if (companyId != null &&
-                            !companyId.isBlank()) {
-
-                        predicates.add(
-                                cb.equal(
-                                        root.get("companyId"),
-                                        UUID.fromString(companyId)
-                                )
-                        );
-                    }
-
-                    if (siteId != null &&
-                            !siteId.isBlank()) {
-
-                        predicates.add(
-                                cb.equal(
-                                        root.get("siteId"),
-                                        UUID.fromString(siteId)
-                                )
-                        );
-                    }
-
-                    return cb.and(
-                            predicates.toArray(
-                                    new Predicate[0]
-                            )
-                    );
-                };
-
-        Map<String, PlaybackOptionResponse> options =
-                new LinkedHashMap<>();
-
-        for (
-                ReportHistory history :
-                        reportHistoryRepository.findAll(spec)
-        ) {
-
+        for (ReportHistory history : reportHistoryRepository.findAll(spec)) {
             String deviceSn = history.getDeviceSn();
             UUID missionId = history.getMissionId();
 
-            if (deviceSn == null ||
-                    deviceSn.isBlank()) {
+            if (!hasText(deviceSn)) {
                 continue;
             }
 
-            /*
-             * Additional defensive check.
-             * The Specification already filters Company User
-             * resources, but keep the response builder safe too.
-             */
             if (isCompanyUser(currentUser)) {
-
                 if (!allowedDeviceSns.contains(deviceSn)) {
                     continue;
                 }
 
-                if (missionId == null ||
-                        !allowedMissionIds.contains(missionId)) {
+                if (missionId == null || !allowedMissionIds.contains(missionId)) {
                     continue;
                 }
             }
 
             String key =
-                    deviceSn +
-                    "|" +
-                    (
-                            missionId != null
-                                    ? missionId.toString()
-                                    : ""
-                    );
+                    deviceSn + "|" +
+                    (missionId != null ? missionId.toString() : "");
 
             if (options.containsKey(key)) {
                 continue;
             }
 
-            Device device =
-                    deviceRepository
-                            .findByDeviceSnAndDeletedAtIsNull(
-                                    deviceSn
-                            )
-                            .orElse(null);
+            Device device = deviceRepository
+                    .findByDeviceSnAndDeletedAtIsNull(deviceSn)
+                    .orElse(null);
 
-            Mission mission =
-                    missionId != null
-                            ? missionRepository
-                                .findByMissionIdAndDeletedAtIsNull(
-                                        missionId
-                                )
-                                .orElse(null)
-                            : null;
+            Mission mission = missionId != null
+                    ? missionRepository
+                        .findByMissionIdAndDeletedAtIsNull(missionId)
+                        .orElse(null)
+                    : null;
 
             options.put(
                     key,
@@ -437,19 +326,15 @@ public class PlaybackService {
     }
 
     private User getCurrentUser() {
-
         Authentication authentication =
                 SecurityContextHolder
                         .getContext()
                         .getAuthentication();
 
-        if (authentication == null ||
-                !(authentication.getPrincipal()
-                        instanceof CustomUserDetails customUserDetails)) {
-
-            throw new RuntimeException(
-                    "Authenticated user not found"
-            );
+        if (authentication == null
+                || !(authentication.getPrincipal()
+                instanceof CustomUserDetails customUserDetails)) {
+            throw new RuntimeException("Authenticated user not found");
         }
 
         return userRepository
@@ -457,9 +342,7 @@ public class PlaybackService {
                         customUserDetails.getUserId()
                 )
                 .orElseThrow(
-                        () -> new RuntimeException(
-                                "User not found"
-                        )
+                        () -> new RuntimeException("User not found")
                 );
     }
 
@@ -479,126 +362,65 @@ public class PlaybackService {
                 );
     }
 
-    private Set<String> getAllowedDeviceSns(
-            User currentUser
-    ) {
-
-        if (!isCompanyUser(currentUser)) {
-            return Set.of();
-        }
-
-        if (currentUser.getDevices() == null) {
+    private Set<String> getAllowedDeviceSns(User currentUser) {
+        if (!isCompanyUser(currentUser)
+                || currentUser.getDevices() == null) {
             return Set.of();
         }
 
         return currentUser.getDevices()
                 .stream()
-                .filter(device ->
-                        device.getDeletedAt() == null
-                )
+                .filter(device -> device.getDeletedAt() == null)
                 .map(Device::getDeviceSn)
-                .filter(deviceSn ->
-                        deviceSn != null &&
-                        !deviceSn.isBlank()
-                )
+                .filter(this::hasText)
                 .collect(Collectors.toSet());
     }
 
-    private Set<UUID> getAllowedMissionIds(
-            User currentUser
-    ) {
-
-        if (!isCompanyUser(currentUser)) {
-            return Set.of();
-        }
-
-        if (currentUser.getMissions() == null) {
+    private Set<UUID> getAllowedMissionIds(User currentUser) {
+        if (!isCompanyUser(currentUser)
+                || currentUser.getMissions() == null) {
             return Set.of();
         }
 
         return currentUser.getMissions()
                 .stream()
-                .filter(mission ->
-                        mission.getDeletedAt() == null
-                )
+                .filter(mission -> mission.getDeletedAt() == null)
                 .map(Mission::getMissionId)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
     }
 
-    private Set<UUID> getAllowedSiteIds(
-            User currentUser
-    ) {
-
-        if (!isCompanyUser(currentUser)) {
-            return Set.of();
-        }
-
-        if (currentUser.getSites() == null) {
+    private Set<UUID> getAllowedSiteIds(User currentUser) {
+        if (!isCompanyUser(currentUser)
+                || currentUser.getSites() == null) {
             return Set.of();
         }
 
         return currentUser.getSites()
                 .stream()
-                .filter(site ->
-                        site.getDeletedAt() == null
-                )
+                .filter(site -> site.getDeletedAt() == null)
                 .map(site -> site.getSiteId())
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-    }
-
-    private void validateCompanyAccess(
-            User currentUser,
-            String companyId
-    ) {
-
-        if (isSysAdmin(currentUser)) {
-            return;
-        }
-
-        UUID currentCompanyId =
-                currentUser.getCompanyId();
-
-        if (currentCompanyId == null) {
-            throw new AccessDeniedException(
-                    "User is not assigned to a company"
-            );
-        }
-
-        if (companyId != null &&
-                !companyId.isBlank() &&
-                !currentCompanyId.equals(
-                        UUID.fromString(companyId)
-                )) {
-
-            throw new AccessDeniedException(
-                    "You do not have access to this company"
-            );
-        }
     }
 
     private void validateSiteAccess(
             User currentUser,
             String siteId
     ) {
-
-        if (!isCompanyUser(currentUser) ||
-                siteId == null ||
-                siteId.isBlank()) {
+        if (!isCompanyUser(currentUser) || !hasText(siteId)) {
             return;
         }
 
-        UUID requestedSiteId =
-                UUID.fromString(siteId);
+        UUID requestedSiteId = UUID.fromString(siteId);
 
         boolean assigned =
-                currentUser.getSites() != null &&
-                currentUser.getSites()
+                currentUser.getSites() != null
+                        && currentUser.getSites()
                         .stream()
                         .anyMatch(site ->
-                                site.getDeletedAt() == null &&
-                                requestedSiteId.equals(
+                                site.getDeletedAt() == null
+                                        && requestedSiteId.equals(
                                         site.getSiteId()
                                 )
                         );
@@ -614,20 +436,17 @@ public class PlaybackService {
             User currentUser,
             String deviceSn
     ) {
-
-        if (!isCompanyUser(currentUser) ||
-                deviceSn == null ||
-                deviceSn.isBlank()) {
+        if (!isCompanyUser(currentUser) || !hasText(deviceSn)) {
             return;
         }
 
         boolean assigned =
-                currentUser.getDevices() != null &&
-                currentUser.getDevices()
+                currentUser.getDevices() != null
+                        && currentUser.getDevices()
                         .stream()
                         .anyMatch(device ->
-                                device.getDeletedAt() == null &&
-                                deviceSn.equals(
+                                device.getDeletedAt() == null
+                                        && deviceSn.equals(
                                         device.getDeviceSn()
                                 )
                         );
@@ -643,23 +462,19 @@ public class PlaybackService {
             User currentUser,
             String missionId
     ) {
-
-        if (!isCompanyUser(currentUser) ||
-                missionId == null ||
-                missionId.isBlank()) {
+        if (!isCompanyUser(currentUser) || !hasText(missionId)) {
             return;
         }
 
-        UUID requestedMissionId =
-                UUID.fromString(missionId);
+        UUID requestedMissionId = UUID.fromString(missionId);
 
         boolean assigned =
-                currentUser.getMissions() != null &&
-                currentUser.getMissions()
+                currentUser.getMissions() != null
+                        && currentUser.getMissions()
                         .stream()
                         .anyMatch(mission ->
-                                mission.getDeletedAt() == null &&
-                                requestedMissionId.equals(
+                                mission.getDeletedAt() == null
+                                        && requestedMissionId.equals(
                                         mission.getMissionId()
                                 )
                         );
@@ -671,14 +486,12 @@ public class PlaybackService {
         }
     }
 
-    private PlaybackListResponse toResponse(
-            ReportHistory history
-    ) {
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
 
-        String segment =
-                DateTimeUtil.formatKst(
-                        history.getCreatedAt()
-                );
+    private PlaybackListResponse toResponse(ReportHistory history) {
+        String segment = DateTimeUtil.formatKst(history.getCreatedAt());
 
         return PlaybackListResponse.builder()
                 .segment(segment)
