@@ -19,6 +19,7 @@ import com.dji.sample.repository.UserRoleRepository;
 import com.dji.sample.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +74,11 @@ public class UserServiceImpl implements UserService {
 
             users = userRepository.findByCompanyIdAndDeletedAtIsNull(companyId);
 
+            // Company-level users must never see SYS_ADMIN accounts.
+            users = users.stream()
+                    .filter(user -> !isSysAdmin(user))
+                    .toList();
+
             if (keyword != null && !keyword.isBlank()) {
                 String lower = keyword.toLowerCase();
 
@@ -81,8 +87,8 @@ public class UserServiceImpl implements UserService {
                                 (user.getUsername() != null &&
                                         user.getUsername().toLowerCase().contains(lower))
                                         ||
-                                        (user.getEmail() != null &&
-                                                user.getEmail().toLowerCase().contains(lower)))
+                                (user.getEmail() != null &&
+                                        user.getEmail().toLowerCase().contains(lower)))
                         .toList();
             }
         }
@@ -91,10 +97,15 @@ public class UserServiceImpl implements UserService {
                 .map(this::mapToResponse)
                 .toList();
     }
+
     @Override
     public UserResponse getUserById(UUID userId) {
+        User currentUser = getCurrentUser();
+
         User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        validateUserAccess(currentUser, user);
 
         return mapToResponse(user);
     }
@@ -102,6 +113,28 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse createUser(CreateUserRequest request) {
+        User currentUser = getCurrentUser();
+
+        List<Long> requestedRoleIds =
+                resolveRoleIds(request.getRoleIds(), request.getRole());
+
+        if (!isSysAdmin(currentUser)) {
+            if (containsSysAdminRole(requestedRoleIds)) {
+                throw new AccessDeniedException(
+                        "Only System Administrator can assign SYS_ADMIN role"
+                );
+            }
+
+            UUID currentCompanyId = currentUser.getCompanyId();
+
+            if (request.getCompanyId() == null ||
+                    !request.getCompanyId().equals(currentCompanyId)) {
+                throw new AccessDeniedException(
+                        "You cannot create a user for another company"
+                );
+            }
+        }
+
         User user = new User();
 
         String username = request.getUsername() != null ? request.getUsername().trim() : "";
@@ -142,7 +175,7 @@ public class UserServiceImpl implements UserService {
 
         User savedUser = userRepository.save(user);
 
-        saveUserRoles(savedUser, resolveRoleIds(request.getRoleIds(), request.getRole()));
+        saveUserRoles(savedUser, requestedRoleIds);
 
         updateUserAssignments(
                 savedUser,
@@ -157,8 +190,32 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse updateUser(UUID userId, UpdateUserRequest request) {
+        User currentUser = getCurrentUser();
+
         User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        validateUserAccess(currentUser, user);
+
+        List<Long> requestedRoleIds =
+                resolveRoleIds(request.getRoleIds(), request.getRole());
+
+        if (!isSysAdmin(currentUser)) {
+            if (containsSysAdminRole(requestedRoleIds)) {
+                throw new AccessDeniedException(
+                        "Only System Administrator can assign SYS_ADMIN role"
+                );
+            }
+
+            UUID currentCompanyId = currentUser.getCompanyId();
+
+            if (request.getCompanyId() != null &&
+                    !request.getCompanyId().equals(currentCompanyId)) {
+                throw new AccessDeniedException(
+                        "You cannot assign a user to another company"
+                );
+            }
+        }
 
         String username = request.getUsername() != null ? request.getUsername().trim() : "";
         String email = request.getEmail() != null ? request.getEmail().trim() : "";
@@ -210,7 +267,7 @@ public class UserServiceImpl implements UserService {
         userRoleRepository.deleteByUserId(updatedUser.getUserId());
         userRoleRepository.flush();
 
-        saveUserRoles(updatedUser, resolveRoleIds(request.getRoleIds(), request.getRole()));
+        saveUserRoles(updatedUser, requestedRoleIds);
 
         updateUserAssignments(
                 updatedUser,
@@ -227,8 +284,12 @@ public class UserServiceImpl implements UserService {
     @Override
 @Transactional
 public void changePassword(UUID userId, ChangePasswordRequest request) {
+    User currentUser = getCurrentUser();
+
     User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
             .orElseThrow(() -> new RuntimeException("User not found"));
+
+    validateUserAccess(currentUser, user);
 
     String currentPassword =
             request.getCurrentPassword() != null
@@ -287,8 +348,12 @@ public void changePassword(UUID userId, ChangePasswordRequest request) {
     @Override
     @Transactional
     public void deleteUser(UUID userId) {
+        User currentUser = getCurrentUser();
+
         User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        validateUserAccess(currentUser, user);
 
         userRoleRepository.deleteByUserId(user.getUserId());
 
@@ -459,6 +524,39 @@ public void changePassword(UUID userId, ChangePasswordRequest request) {
 
 private boolean isSysAdmin(User user) {
     return userRoleRepository.existsByUserIdAndRoleId(user.getUserId(), 1);
+}
+
+private boolean containsSysAdminRole(List<Long> roleIds) {
+    return roleIds != null &&
+            roleIds.stream()
+                    .anyMatch(roleId -> roleId != null && roleId == 1L);
+}
+
+private void validateUserAccess(User currentUser, User targetUser) {
+
+    // SYS_ADMIN has full access.
+    if (isSysAdmin(currentUser)) {
+        return;
+    }
+
+    // Company-level users must never access a SYS_ADMIN account.
+    if (isSysAdmin(targetUser)) {
+        throw new AccessDeniedException(
+                "You do not have permission to access this user"
+        );
+    }
+
+    UUID currentCompanyId = currentUser.getCompanyId();
+    UUID targetCompanyId = targetUser.getCompanyId();
+
+    // Company-level users can only access users in their own company.
+    if (currentCompanyId == null ||
+            targetCompanyId == null ||
+            !currentCompanyId.equals(targetCompanyId)) {
+        throw new AccessDeniedException(
+                "You do not have permission to access this user"
+        );
+    }
 }
 
     private void updateUserAssignments(User user, List<UUID> siteIds, List<UUID> missionIds, List<UUID> deviceIds) {
