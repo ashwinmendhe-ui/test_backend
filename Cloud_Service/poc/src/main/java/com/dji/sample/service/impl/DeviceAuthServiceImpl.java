@@ -25,6 +25,9 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
 
     private static final String TOKEN_TYPE = "Bearer";
 
+    private static final UUID ZERO_UUID =
+            UUID.fromString("00000000-0000-0000-0000-000000000000");
+
     private final UserRepository userRepository;
     private final DeviceRepository deviceRepository;
     private final PasswordEncoder passwordEncoder;
@@ -41,6 +44,9 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
 
     @Value("${mqtt.use-ssl:false}")
     private Boolean mqttUseSsl;
+
+    @Value("${dji.workspace-id:}")
+    private String djiWorkspaceId;
 
     @Override
     @Transactional(readOnly = true)
@@ -83,26 +89,22 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
                 device.getDeviceSn()
         );
 
-        int selectedMqttPort = Boolean.TRUE.equals(mqttUseSsl)
-                ? mqttSslPort
-                : mqttPort;
-
         return DeviceLoginResponse.builder()
-        .accessToken(accessToken)
-        .refreshToken(refreshToken)
-        .expiresIn(jwtService.getMqttAccessTokenExpirationSeconds())
-        .tokenType("Bearer")
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .expiresIn(jwtService.getMqttAccessTokenExpirationSeconds())
+                .tokenType(TOKEN_TYPE)
 
-        .workspaceId(user.getCompanyId().toString())
-        .username(user.getUsername())
-        .userId(user.getUserId().toString())
+                .workspaceId(resolveWorkspaceId(user))
+                .username(user.getUsername())
+                .userId(user.getUserId().toString())
 
-        .mqttHost(mqttPublicHost)
-        .mqttPort(mqttUseSsl ? mqttSslPort : mqttPort)
-        .mqttUseSsl(mqttUseSsl)
-        .mqttUsername(deviceSn)
-        .deviceSn(deviceSn)
-        .build();
+                .mqttHost(mqttPublicHost)
+                .mqttPort(Boolean.TRUE.equals(mqttUseSsl) ? mqttSslPort : mqttPort)
+                .mqttUseSsl(mqttUseSsl)
+                .mqttUsername(deviceSn)
+                .deviceSn(deviceSn)
+                .build();
     }
 
     private void validateUser(User user, String rawPassword) {
@@ -119,6 +121,51 @@ public class DeviceAuthServiceImpl implements DeviceAuthService {
                     "Invalid username or password"
             );
         }
+    }
+
+    private String resolveWorkspaceId(User user) {
+        UUID companyId = user.getCompanyId();
+
+        if (companyId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Company ID is missing"
+            );
+        }
+
+        // Normal companies continue using their existing company UUID.
+        if (!ZERO_UUID.equals(companyId)) {
+            return companyId.toString();
+        }
+
+        // D.Hive uses the all-zero company UUID in existing production data.
+        // DJI must receive a stable, non-zero workspace ID instead.
+        if (djiWorkspaceId == null || djiWorkspaceId.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "DJI workspace ID is not configured"
+            );
+        }
+
+        UUID workspaceId;
+
+        try {
+            workspaceId = UUID.fromString(djiWorkspaceId.trim());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Invalid DJI workspace ID configuration"
+            );
+        }
+
+        if (ZERO_UUID.equals(workspaceId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "DJI workspace ID must not be the all-zero UUID"
+            );
+        }
+
+        return workspaceId.toString();
     }
 
     private void validateCompanyOwnership(User user, Device device) {

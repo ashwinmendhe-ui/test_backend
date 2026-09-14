@@ -81,3 +81,6 @@ ai-service:
 slack:
   enabled: ${SLACK_ENABLED:false}
   bot-token: ${SLACK_BOT_TOKEN:}
+
+dji:
+  workspace-id: ${DJI_WORKSPACE_ID:}
