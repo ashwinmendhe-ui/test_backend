@@ -13,6 +13,10 @@ import java.time.Duration;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Files;
 
 @Service
 public class S3PresignService {
@@ -34,7 +38,26 @@ public class S3PresignService {
         }
 
 
+    @Value("${app.storage.local-stream-dir:}")
+    private String localStreamDir;
+
+    private Path localStreamFile(String key) {
+        if (localStreamDir == null || localStreamDir.isBlank() || key == null) return null;
+        try {
+            Path root = Path.of(localStreamDir).toRealPath();
+            Path candidate = root.resolve(key).normalize();
+            if (!candidate.startsWith(root) || !Files.isRegularFile(candidate)) return null;
+            Path real = candidate.toRealPath();
+            return real.startsWith(root) ? real : null;
+        } catch (IOException ex) { return null; }
+    }
+
     public InputStream getStreamObject(String objectKey) {
+        Path local = localStreamFile(objectKey);
+        if (local != null) {
+            try { return Files.newInputStream(local); }
+            catch (IOException ex) { throw new UncheckedIOException(ex); }
+        }
         GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(streamBucket)
                 .key(objectKey)
@@ -44,6 +67,7 @@ public class S3PresignService {
         }
 
         public boolean streamObjectExists(String objectKey) {
+        if (localStreamFile(objectKey) != null) return true;
         try {
                 HeadObjectRequest request = HeadObjectRequest.builder()
                         .bucket(streamBucket)
