@@ -1,0 +1,20 @@
+node.cookie = "REPLACE_EMQX_NODE_COOKIE"
+node.name = "emqx@127.0.0.1"
+node.data_dir = "/opt/emqx/data"
+listeners.tcp.default { bind = "0.0.0.0:1883" }
+listeners.tcp.internal { bind = "0.0.0.0:1884", enable_authn = false }
+listeners.ssl.default.enable = false
+listeners.ws.default.enable = false
+listeners.wss.default.enable = false
+dashboard.listeners.http.bind = "127.0.0.1:18083"
+authentication = [{
+ mechanism = jwt
+ use_jwks = false
+ algorithm = hmac-based
+ secret = "REPLACE_JWT_MQTT_SECRET"
+ secret_base64_encoded = false
+ from = password
+ disconnect_after_expire = true
+ verify_claims { device_sn = "${username}", role = "DEVICE", token_type = "ACCESS", iss = "DJI", device_id = "REPLACE_DEVICE_UUID" }
+}]
+authorization { no_match = allow, sources = [] }

@@ -1,0 +1,22 @@
+# Only templates/code/docs belong in this folder.
+compose.yaml
+migration/*.env
+migration/emqx.conf
+external-web/default.conf
+external-web/html/
+data/
+aws-tools/auto-runtime/
+aws-tools/bin/
+aws-tools/aws-cli/
+aws-tools/session-manager-plugin/
+aws-tools/robopilot-sso.config
+aws-tools/server-identity/aws_signing_helper
+*.pem
+*.key
+*.csr
+*.srl
+*.dump
+*.log
+*.lock
+*.previous.*
+https-ip/letsencrypt/

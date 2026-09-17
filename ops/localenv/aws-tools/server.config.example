@@ -1,0 +1,3 @@
+[profile robopilot-server]
+region = ap-northeast-2
+credential_process = /home/dhiveserver/robopilot-local-20260911/aws-tools/server-identity/aws_signing_helper credential-process --certificate /home/dhiveserver/robopilot-local-20260911/aws-tools/server-identity/server.pem --private-key /home/dhiveserver/robopilot-local-20260911/aws-tools/server-identity/server.key --trust-anchor-arn arn:aws:rolesanywhere:ap-northeast-2:852921658576:trust-anchor/1c0923f4-5a8e-47f3-805f-4ed735337e6d --profile-arn arn:aws:rolesanywhere:ap-northeast-2:852921658576:profile/3ed8c6f5-7404-42eb-9281-2544eb76bb95 --role-arn arn:aws:iam::852921658576:role/ROBOPILOT-Local100-Server --role-session-name robopilot-local-100 --session-duration 3600

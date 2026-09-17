@@ -1,0 +1,40 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadStreamObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::robopilot-stream-data/streams/*"
+    },
+    {
+      "Sid": "AIInstance",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ec2:ap-northeast-2:852921658576:instance/i-0a4cf711bd8b8fa73",
+      "Condition": {
+        "BoolIfExists": {
+          "ssm:SessionDocumentAccessCheck": "true"
+        }
+      }
+    },
+    {
+      "Sid": "OnlyAI7879Document",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ssm:ap-northeast-2:852921658576:document/ROBOPILOT-Local100-AI7879"
+    },
+    {
+      "Sid": "OwnTunnel",
+      "Effect": "Allow",
+      "Action": [
+        "ssmmessages:OpenDataChannel",
+        "ssm:TerminateSession",
+        "ssm:ResumeSession"
+      ],
+      "Resource": "arn:aws:ssm:ap-northeast-2:852921658576:session/robopilot-local-100-*"
+    }
+  ]
+}

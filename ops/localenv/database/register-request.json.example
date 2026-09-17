@@ -1,0 +1,6 @@
+{
+  "username": "REPLACE_ADMIN_USERNAME",
+  "email": "admin@example.com",
+  "password": "REPLACE_STRONG_PASSWORD",
+  "fullName": "Local Administrator"
+}

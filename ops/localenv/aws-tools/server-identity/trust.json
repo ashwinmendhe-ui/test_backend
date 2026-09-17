@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "rolesanywhere.amazonaws.com"
+      },
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession",
+        "sts:SetSourceIdentity"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:rolesanywhere:ap-northeast-2:852921658576:trust-anchor/1c0923f4-5a8e-47f3-805f-4ed735337e6d"
+        },
+        "StringEquals": {
+          "aws:SourceAccount": "852921658576",
+          "aws:PrincipalTag/x509Subject/CN": "robopilot-local-192-168-0-100"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+[req]
+prompt=no
+distinguished_name=dn
+x509_extensions=ca
+[dn]
+O=DHive
+CN=ROBOPILOT Local Server CA
+[ca]
+basicConstraints=critical,CA:TRUE,pathlen:0
+keyUsage=critical,keyCertSign,cRLSign
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always

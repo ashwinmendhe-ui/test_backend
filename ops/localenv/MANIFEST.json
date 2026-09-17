@@ -1,0 +1,29 @@
+{
+  "captured": "2026-09-17",
+  "source": "sanitized read-only export from current local Ubuntu server; no credentials or application rows",
+  "sha256": {
+    ".gitignore": "8927218937304231bb1df07553e4df778d092c1d5d1f6c076553e97dcdf0e320",
+    "check-package.py": "e3eab96830831b830a6b4007243cba59adb8492895357f50cece3438431d727b",
+    "compose.yaml.example": "cdaa9cb262e559d32f58e8a9497405d634d9191de0d4cdc58fac027fa90e3633",
+    "frontend.production.env.example": "8cfeafe8c271088932c42e1fbd5ddc0cda1b971843975c09c478d08339f97bab",
+    "README.md": "3a4c94fd82bff66c1d225f4156724ca5ce2283a0f02a677a091762f9b01e925c",
+    "aws-tools/aws_connection_supervisor_20260911.py": "bf869428e00d749be8693fb17ba7c6ffc862c198a7928d37a05c623e1b4dbacc",
+    "aws-tools/backend-credentials.config.example": "eb917c994e8da8a0a1b0e242a253295817002ee0e0367090d0289d9fc24ab494",
+    "aws-tools/server.config.example": "4d54ccf2041c1c9dd7812bee6f9f9f4df8e64d4fb15c980c77b3f529090b0e89",
+    "database/grant-initial-admin.sql": "c9c7091d32b7beefc4697be43ebec31ea72214871a7a3b8ec5edd6f13dee7276",
+    "database/register-request.json.example": "2e64613774d37d7f40c446fc0a3fbe0677f55e56ae11de3a8e4eeb91add62f97",
+    "database/roles.sql": "77aef83fa9a176e55504ae2062742acc9fef41d389ab65392b5f52108f837fe8",
+    "database/schema.sql": "1ecf15eddd1f4c98440cec2d6ec96651d91afb40eabc6e83a69101dc78dfbdfa",
+    "external-web/acme-bootstrap.conf": "aa21b28d726fc98063b693b38cd0a2d26ba34e100a7ee190671803f21d601e1f",
+    "external-web/default.conf.example": "e9ff89b006b4aec22c1dc79732f878e6bee466f77a8c196ebefc6eb6732cbac2",
+    "https-ip/renew.sh": "d5d49732cc7d57773a7f73d4dcb733325bdaa15b0677f82593cef9cd5d2b99e0",
+    "migration/backend.env.example": "1867dd31ba66eea7a049fdd5469370dcab33ebf4694d2989ff1353eb56e88928",
+    "migration/db.env.example": "1a6b9d72ec33a79b7d6e73242330383b44c586965c0347d63f360bb3482121b7",
+    "migration/emqx.conf.example": "52cff1687b7410825b4aa0dd48513483506d5f2dd6a83b11d784e82edd572b54",
+    "server-identity-ca/ca.cnf": "33f4ed0bae3fd70303906f072946e3ea7b8ef6aa7064f4a98344ae0aaae40e09",
+    "server-identity-ca/leaf.ext": "5248b447beae2fd3091a663836cf68770b5cd9f5afd283053c3eb5f4d7838770",
+    "server-identity-ca/renew.sh": "668dfa330685d17dce0aac207e78c2ba42e6e14d36c2158b5a1881f00f182e28",
+    "aws-tools/server-identity/policy.json": "6ad9a3123d2f9903ca625ddbadc82539b37f45d41ab193bd151af663456b913e",
+    "aws-tools/server-identity/trust.json": "74a686f077c3e1fcc77079dfb8103f757357e1414e303b67d06b4eba165674b4"
+  }
+}
